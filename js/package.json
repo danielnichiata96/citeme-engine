@@ -1,0 +1,24 @@
+{
+  "name": "@citeme/citation-engine-wasm",
+  "version": "0.1.0",
+  "description": "High-performance citation formatting engine powered by Rust/Wasm",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "pkg/citeme_engine_wasm.js",
+    "pkg/citeme_engine_wasm.d.ts",
+    "pkg/citeme_engine_wasm_bg.wasm",
+    "pkg/citeme_engine_wasm_bg.wasm.d.ts"
+  ],
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "keywords": ["citation", "csl", "bibtex", "wasm", "academic"],
+  "license": "MIT"
+}
