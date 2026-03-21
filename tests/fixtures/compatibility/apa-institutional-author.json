@@ -1,0 +1,19 @@
+{
+  "description": "Institutional author",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "report",
+    "id": "who2024",
+    "title": "Global Health Report 2024",
+    "author": [
+      { "literal": "World Health Organization" }
+    ],
+    "issued": { "date-parts": [[2024]] },
+    "publisher": "WHO Press"
+  },
+  "expected": {
+    "reference": "World Health Organization. (2024). <span style=\"font-style: italic;\">Global Health Report 2024</span>. WHO Press.",
+    "inText": "(World Health Organization, 2024)"
+  }
+}

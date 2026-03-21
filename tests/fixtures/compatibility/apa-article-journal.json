@@ -1,0 +1,24 @@
+{
+  "description": "Standard journal article with DOI",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "smith2024a",
+    "title": "A Study of Something Important",
+    "author": [
+      { "family": "Smith", "given": "John A." },
+      { "family": "Doe", "given": "Jane B." }
+    ],
+    "issued": { "date-parts": [[2024]] },
+    "container-title": "Journal of Important Studies",
+    "volume": "42",
+    "issue": "3",
+    "page": "100-115",
+    "DOI": "10.1234/jis.2024.001"
+  },
+  "expected": {
+    "reference": "Smith, J. A., & Doe, J. B. (2024). A Study of Something Important. <span style=\"font-style: italic;\">Journal of Important Studies</span>, <span style=\"font-style: italic;\">42</span>(3), 100–115. https://doi.org/<a href=\"https://doi.org/10.1234/jis.2024.001\">10.1234/jis.2024.001</a>",
+    "inText": "(Smith & Doe, 2024)"
+  }
+}

@@ -5,6 +5,14 @@ export interface FormatResult {
   inText: string;
 }
 
+export interface ParseResult {
+  entries: unknown[];
+  errors: Array<{ preview: string; error: string }>;
+  format: string;
+  truncated: boolean;
+  scannedEntries: number;
+}
+
 export declare class WasmCitationEngine {
   constructor();
   loadStyle(name: string, cslXml: string): void;
@@ -12,6 +20,8 @@ export declare class WasmCitationEngine {
   hasStyle(name: string): boolean;
   formatBatch(cslJsonStr: string, styleName: string, localeCode: string, abntPostProcess: boolean): string;
   formatOne(cslJsonStr: string, styleName: string, localeCode: string, abntPostProcess: boolean): string;
+  parseBibtex(input: string, maxEntries?: number): string;
+  parseRis(input: string, maxEntries?: number): string;
   version(): string;
 }
 

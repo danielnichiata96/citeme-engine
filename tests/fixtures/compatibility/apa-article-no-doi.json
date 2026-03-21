@@ -1,0 +1,21 @@
+{
+  "description": "Journal article without DOI",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "jones2023",
+    "title": "Understanding Patterns",
+    "author": [
+      { "family": "Jones", "given": "Robert" }
+    ],
+    "issued": { "date-parts": [[2023]] },
+    "container-title": "Psychology Review",
+    "volume": "15",
+    "page": "45-67"
+  },
+  "expected": {
+    "reference": "Jones, R. (2023). Understanding Patterns. <span style=\"font-style: italic;\">Psychology Review</span>, <span style=\"font-style: italic;\">15</span>, 45–67.",
+    "inText": "(Jones, 2023)"
+  }
+}

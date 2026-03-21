@@ -1,0 +1,26 @@
+{
+  "description": "Multi-author (6 authors)",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "team2024",
+    "title": "Large Scale Collaboration Study",
+    "author": [
+      { "family": "Brown", "given": "A." },
+      { "family": "Green", "given": "B." },
+      { "family": "White", "given": "C." },
+      { "family": "Black", "given": "D." },
+      { "family": "Gray", "given": "E." },
+      { "family": "Blue", "given": "F." }
+    ],
+    "issued": { "date-parts": [[2024]] },
+    "container-title": "Nature Methods",
+    "volume": "21",
+    "page": "1-20"
+  },
+  "expected": {
+    "reference": "Brown, A., Green, B., White, C., Black, D., Gray, E., & Blue, F. (2024). Large Scale Collaboration Study. <span style=\"font-style: italic;\">Nature Methods</span>, <span style=\"font-style: italic;\">21</span>, 1–20.",
+    "inText": "(Brown et al., 2024)"
+  }
+}

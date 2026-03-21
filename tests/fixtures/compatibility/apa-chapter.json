@@ -1,0 +1,24 @@
+{
+  "description": "Book chapter",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "chapter",
+    "id": "lee2020",
+    "title": "Machine Learning Approaches",
+    "author": [
+      { "family": "Lee", "given": "Sarah" }
+    ],
+    "issued": { "date-parts": [[2020]] },
+    "container-title": "Handbook of AI",
+    "editor": [
+      { "family": "Wang", "given": "Li" }
+    ],
+    "publisher": "MIT Press",
+    "page": "200-250"
+  },
+  "expected": {
+    "reference": "Lee, S. (2020). Machine Learning Approaches. In L. Wang (Ed.), <span style=\"font-style: italic;\">Handbook of AI</span> (pp. 200–250). MIT Press.",
+    "inText": "(Lee, 2020)"
+  }
+}

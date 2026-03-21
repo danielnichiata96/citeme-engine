@@ -1,0 +1,20 @@
+{
+  "description": "Webpage",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "webpage",
+    "id": "wiki2024",
+    "title": "Citation Style Language",
+    "author": [
+      { "literal": "Wikipedia contributors" }
+    ],
+    "issued": { "date-parts": [[2024]] },
+    "container-title": "Wikipedia",
+    "URL": "https://en.wikipedia.org/wiki/Citation_Style_Language"
+  },
+  "expected": {
+    "reference": "Wikipedia contributors. (2024,). <span style=\"font-style: italic;\">Citation Style Language</span>. Wikipedia. <a href=\"https://en.wikipedia.org/wiki/Citation_Style_Language\">https://en.wikipedia.org/wiki/Citation_Style_Language</a>",
+    "inText": "(Wikipedia contributors, 2024)"
+  }
+}
