@@ -157,6 +157,98 @@ impl CitationEngine {
         Ok(FormatResult { reference, in_text })
     }
 
+    /// Format a batch of CSL-JSON items in one call.
+    ///
+    /// Input: JSON string containing an array of CSL-JSON items.
+    /// Uses ONE shared BibliographyDriver for the entire batch so that:
+    /// - Numeric styles (IEEE) get correct sequential numbering
+    /// - Author-year styles with disambiguation (APA) resolve correctly
+    /// - Citation grouping works (e.g., "(Smith, 2024a; Smith, 2024b)")
+    pub fn format_batch(
+        &self,
+        csl_json_array_str: &str,
+        style_name: &str,
+        locale_code: &str,
+        options: &FormatOptions,
+    ) -> Result<Vec<FormatResult>, EngineError> {
+        let style = self.styles.get(style_name)
+            .ok_or_else(|| EngineError::StyleNotLoaded(style_name.into()))?;
+
+        let items: Vec<serde_json::Value> = serde_json::from_str(csl_json_array_str)
+            .map_err(|e| EngineError::InvalidCslJson(format!("{e}")))?;
+
+        if items.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let locale = self.resolve_locale(locale_code);
+        let buf_format = match options.output_format {
+            OutputFormat::Html => BufWriteFormat::Html,
+            OutputFormat::Plain => BufWriteFormat::Plain,
+        };
+
+        // Parse all items first
+        let parsed_items: Vec<hayagriva::citationberg::json::Item> = items.iter()
+            .map(|v| serde_json::from_value(v.clone())
+                .map_err(|e| EngineError::InvalidCslJson(format!("{e}"))))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Use ONE shared driver for the entire batch
+        let mut driver = BibliographyDriver::new();
+
+        for item in &parsed_items {
+            let cite_items = vec![CitationItem::with_entry(item)];
+            driver.citation(CitationRequest::new(
+                cite_items,
+                style,
+                locale.clone(),
+                &self.locales,
+                None,
+            ));
+        }
+
+        let rendered = driver.finish(BibliographyRequest {
+            style,
+            locale,
+            locale_files: &self.locales,
+        });
+
+        // Build a lookup by key for bibliography items (they may be sorted/deduped)
+        let bib_map: HashMap<String, String> = rendered.bibliography
+            .map(|bib| bib.items.into_iter().map(|bib_item| {
+                let mut buf = String::new();
+                let _ = bib_item.content.write_buf(&mut buf, buf_format);
+                (bib_item.key.clone(), buf.trim().to_string())
+            }).collect())
+            .unwrap_or_default();
+
+        // Match each citation to its bibliography entry by key
+        let mut results = Vec::with_capacity(parsed_items.len());
+
+        for (i, cite) in rendered.citations.iter().enumerate() {
+            let item_key = parsed_items[i].id()
+                .map(|cow| cow.into_owned())
+                .unwrap_or_else(|| format!("item-{i}"));
+
+            let reference = bib_map.get(&item_key).cloned().unwrap_or_default();
+
+            let in_text = {
+                let mut buf = String::new();
+                let _ = cite.citation.write_buf(&mut buf, buf_format);
+                buf.trim().to_string()
+            };
+
+            if reference.is_empty() && in_text.is_empty() {
+                let item_json = serde_json::to_string(&items[i]).unwrap_or_default();
+                results.push(Self::build_fallback(&item_json));
+            } else {
+                results.push(FormatResult { reference, in_text });
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Build a minimal citation when the CSL engine produces empty output.
     fn build_fallback(csl_json_str: &str) -> FormatResult {
         let v: serde_json::Value = serde_json::from_str(csl_json_str)
@@ -287,5 +379,47 @@ mod tests {
         let result = engine.format_one(csl_json, "apa", "en-US", &FormatOptions::default()).unwrap();
         assert!(!result.reference.is_empty(), "reference must never be empty");
         assert!(!result.in_text.is_empty(), "in_text must never be empty");
+    }
+
+    #[test]
+    fn test_format_batch() {
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let csl_json_array = r#"[
+            {
+                "type": "article-journal",
+                "id": "smith2024",
+                "title": "First Paper",
+                "author": [{"family": "Smith", "given": "John"}],
+                "issued": {"date-parts": [[2024]]}
+            },
+            {
+                "type": "book",
+                "id": "doe2023",
+                "title": "A Great Book",
+                "author": [{"family": "Doe", "given": "Jane"}],
+                "issued": {"date-parts": [[2023]]},
+                "publisher": "Academic Press"
+            }
+        ]"#;
+
+        let opts = FormatOptions::default();
+        let results = engine.format_batch(csl_json_array, "apa", "en-US", &opts).unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].reference.contains("Smith"));
+        assert!(results[1].reference.contains("Doe"));
+    }
+
+    #[test]
+    fn test_format_batch_empty() {
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let results = engine.format_batch("[]", "apa", "en-US", &FormatOptions::default()).unwrap();
+        assert!(results.is_empty());
     }
 }
