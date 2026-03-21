@@ -1,0 +1,31 @@
+{
+  "description": "APA: article with Portuguese particle (da Silva)",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "dasilva2024",
+    "title": "Tropical Ecology of the Amazon Basin",
+    "author": [
+      {
+        "family": "Silva",
+        "given": "João Pedro",
+        "non-dropping-particle": "da"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Ecology",
+    "volume": "105",
+    "page": "200-215"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"dasilva2024\" class=\"csl-entry\">da Silva, J. P. (2024). Tropical Ecology of the Amazon Basin. <i>Ecology</i>, <i>105</i>, 200–215.</div>\n</div>",
+    "inText": "(da Silva, 2024)"
+  }
+}

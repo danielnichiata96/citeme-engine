@@ -1,0 +1,40 @@
+{
+  "description": "Vancouver: journal article",
+  "style": "vancouver",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "vanc2024",
+    "title": "Efficacy of mRNA vaccines against emerging variants",
+    "author": [
+      {
+        "family": "Gupta",
+        "given": "Priya"
+      },
+      {
+        "family": "Anderson",
+        "given": "Robert"
+      },
+      {
+        "family": "Nakamura",
+        "given": "Hiroshi"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "The Lancet Infectious Diseases",
+    "volume": "24",
+    "issue": "1",
+    "page": "45-58",
+    "DOI": "10.1016/s1473-3099(24)00045-8"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"vanc2024\" class=\"csl-entry\">\n    <div class=\"csl-left-margin\">1.</div><div class=\"csl-right-inline\">Gupta P, Anderson R, Nakamura H. Efficacy of mRNA vaccines against emerging variants. The Lancet Infectious Diseases. 2024;24(1):45–58.</div>\n   </div>\n</div>",
+    "inText": "(1)"
+  }
+}

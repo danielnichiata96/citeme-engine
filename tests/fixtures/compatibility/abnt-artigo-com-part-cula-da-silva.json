@@ -1,0 +1,31 @@
+{
+  "description": "ABNT: artigo com partícula (da Silva)",
+  "style": "abnt",
+  "locale": "pt-BR",
+  "input": {
+    "type": "article-journal",
+    "id": "dasilva2024br",
+    "title": "Educação ambiental no ensino fundamental",
+    "author": [
+      {
+        "family": "Silva",
+        "given": "Maria",
+        "non-dropping-particle": "da"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Revista de Educação",
+    "volume": "15",
+    "page": "30-45"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"dasilva2024br\" class=\"csl-entry\">DA SILVA, Maria. Educação ambiental no ensino fundamental. <b>Revista de Educação</b>, v. 15, p. 30–45, 2024. </div>\n</div>",
+    "inText": "(Da Silva, 2024)"
+  }
+}

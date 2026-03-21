@@ -1,0 +1,29 @@
+{
+  "description": "ABNT: tese de doutorado",
+  "style": "abnt",
+  "locale": "pt-BR",
+  "input": {
+    "type": "thesis",
+    "id": "oliveira2024",
+    "title": "Machine learning aplicado à previsão climática no semiárido brasileiro",
+    "author": [
+      {
+        "family": "Oliveira",
+        "given": "Ana Luísa"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "publisher": "Universidade de São Paulo",
+    "genre": "Tese de Doutorado"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"oliveira2024\" class=\"csl-entry\">OLIVEIRA, Ana Luísa. <b>Machine learning aplicado à previsão climática no semiárido brasileiro</b>. Tese de Doutorado—<i>[S.l.]</i>: Universidade de São Paulo, 2024.</div>\n</div>",
+    "inText": "(Oliveira, 2024)"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "description": "MLA: journal article",
+  "style": "mla",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "mla2024",
+    "title": "Narrative Structures in Contemporary Fiction",
+    "author": [
+      {
+        "family": "Williams",
+        "given": "Sarah K."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Modern Language Quarterly",
+    "volume": "85",
+    "issue": "1",
+    "page": "23-48",
+    "DOI": "10.1215/mlq.2024.001"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"mla2024\" class=\"csl-entry\">Williams, Sarah K. “Narrative Structures in Contemporary Fiction.” <i>Modern Language Quarterly</i>, vol. 85, no. 1, 2024, pp. 23–48, https://doi.org/10.1215/mlq.2024.001.</div>\n</div>",
+    "inText": "(Williams)"
+  }
+}

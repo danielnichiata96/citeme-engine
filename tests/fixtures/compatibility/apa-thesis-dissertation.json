@@ -1,0 +1,29 @@
+{
+  "description": "APA: thesis/dissertation",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "thesis",
+    "id": "thesis2024",
+    "title": "Deep Learning for Climate Prediction",
+    "author": [
+      {
+        "family": "Johnson",
+        "given": "Emily R."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "publisher": "Stanford University",
+    "genre": "Doctoral dissertation"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"thesis2024\" class=\"csl-entry\">Johnson, E. R. (2024). <i>Deep Learning for Climate Prediction</i> [Doctoral dissertation]. Stanford University.</div>\n</div>",
+    "inText": "(Johnson, 2024)"
+  }
+}

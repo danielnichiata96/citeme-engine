@@ -1,0 +1,31 @@
+{
+  "description": "Edge: article with suffix (Jr.)",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "suffix2024",
+    "title": "Generational Leadership Studies",
+    "author": [
+      {
+        "family": "King",
+        "given": "Martin Luther",
+        "suffix": "Jr."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Leadership Quarterly",
+    "volume": "35",
+    "page": "100-110"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"suffix2024\" class=\"csl-entry\">King, M. L., Jr. (2024). Generational Leadership Studies. <i>Leadership Quarterly</i>, <i>35</i>, 100–110.</div>\n</div>",
+    "inText": "(King, 2024)"
+  }
+}

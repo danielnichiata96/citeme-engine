@@ -1,0 +1,24 @@
+{
+  "description": "APA: no author (container title as author)",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "noauthor2024",
+    "title": "Editorial: The Future of Open Science",
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Science",
+    "volume": "383",
+    "page": "1"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"noauthor2024\" class=\"csl-entry\">Editorial: The Future of Open Science. (2024). <i>Science</i>, <i>383</i>, 1.</div>\n</div>",
+    "inText": "(“Editorial: The Future of Open Science,” 2024)"
+  }
+}

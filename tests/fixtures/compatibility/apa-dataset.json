@@ -1,0 +1,28 @@
+{
+  "description": "APA: dataset",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "dataset",
+    "id": "dataset2024",
+    "title": "Global Temperature Records 1850-2024",
+    "author": [
+      {
+        "literal": "NASA Goddard Institute"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "DOI": "10.5281/zenodo.123456",
+    "URL": "https://data.nasa.gov/temperature"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"dataset2024\" class=\"csl-entry\">NASA Goddard Institute. (2024). <i>Global Temperature Records 1850-2024</i> [Dataset]. https://doi.org/10.5281/zenodo.123456</div>\n</div>",
+    "inText": "(NASA Goddard Institute, 2024)"
+  }
+}

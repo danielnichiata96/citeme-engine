@@ -1,0 +1,36 @@
+{
+  "description": "Chicago AD: journal article",
+  "style": "chicago-author-date",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "chicago2024",
+    "title": "Economic Impacts of Climate Policy",
+    "author": [
+      {
+        "family": "Thompson",
+        "given": "David"
+      },
+      {
+        "family": "Martinez",
+        "given": "Elena"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "American Economic Review",
+    "volume": "114",
+    "issue": "2",
+    "page": "567-590",
+    "DOI": "10.1257/aer.2024.0567"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"chicago2024\" class=\"csl-entry\">Thompson, David, and Elena Martinez. 2024. “Economic Impacts of Climate Policy.” <i>American Economic Review</i> 114 (2): 567–90. https://doi.org/10.1257/aer.2024.0567.</div>\n</div>",
+    "inText": "(Thompson and Martinez 2024)"
+  }
+}

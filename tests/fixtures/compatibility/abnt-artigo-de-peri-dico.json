@@ -1,0 +1,32 @@
+{
+  "description": "ABNT: artigo de periódico",
+  "style": "abnt",
+  "locale": "pt-BR",
+  "input": {
+    "type": "article-journal",
+    "id": "silva2024",
+    "title": "Impactos ambientais na Amazônia",
+    "author": [
+      {
+        "family": "Silva",
+        "given": "João Pedro"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Revista Brasileira de Ecologia",
+    "volume": "28",
+    "issue": "2",
+    "page": "45-60",
+    "DOI": "10.5555/rbe.2024.001"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"silva2024\" class=\"csl-entry\">SILVA, João Pedro. Impactos ambientais na Amazônia. <b>Revista Brasileira de Ecologia</b>, v. 28, n. 2, p. 45–60, 2024. </div>\n</div>",
+    "inText": "(Silva, 2024)"
+  }
+}

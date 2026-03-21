@@ -1,0 +1,31 @@
+{
+  "description": "APA: book, single author",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "book",
+    "id": "doe2023book",
+    "title": "The Art of Academic Writing",
+    "author": [
+      {
+        "family": "Doe",
+        "given": "Jane"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "publisher": "Academic Press",
+    "publisher-place": "New York",
+    "edition": "3rd",
+    "ISBN": "978-0-123456-78-9"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"doe2023book\" class=\"csl-entry\">Doe, J. (2023). <i>The Art of Academic Writing</i> (3rd ed.). Academic Press.</div>\n</div>",
+    "inText": "(Doe, 2023)"
+  }
+}

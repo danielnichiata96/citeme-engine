@@ -1,0 +1,110 @@
+{
+  "description": "Edge: 20+ authors (et al. truncation)",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "manyauthors",
+    "title": "A Large Collaborative Study",
+    "author": [
+      {
+        "family": "Author1",
+        "given": "First1"
+      },
+      {
+        "family": "Author2",
+        "given": "First2"
+      },
+      {
+        "family": "Author3",
+        "given": "First3"
+      },
+      {
+        "family": "Author4",
+        "given": "First4"
+      },
+      {
+        "family": "Author5",
+        "given": "First5"
+      },
+      {
+        "family": "Author6",
+        "given": "First6"
+      },
+      {
+        "family": "Author7",
+        "given": "First7"
+      },
+      {
+        "family": "Author8",
+        "given": "First8"
+      },
+      {
+        "family": "Author9",
+        "given": "First9"
+      },
+      {
+        "family": "Author10",
+        "given": "First10"
+      },
+      {
+        "family": "Author11",
+        "given": "First11"
+      },
+      {
+        "family": "Author12",
+        "given": "First12"
+      },
+      {
+        "family": "Author13",
+        "given": "First13"
+      },
+      {
+        "family": "Author14",
+        "given": "First14"
+      },
+      {
+        "family": "Author15",
+        "given": "First15"
+      },
+      {
+        "family": "Author16",
+        "given": "First16"
+      },
+      {
+        "family": "Author17",
+        "given": "First17"
+      },
+      {
+        "family": "Author18",
+        "given": "First18"
+      },
+      {
+        "family": "Author19",
+        "given": "First19"
+      },
+      {
+        "family": "Author20",
+        "given": "First20"
+      },
+      {
+        "family": "Author21",
+        "given": "First21"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Science",
+    "volume": "384",
+    "page": "1-15"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"manyauthors\" class=\"csl-entry\">Author1, F., Author2, F., Author3, F., Author4, F., Author5, F., Author6, F., Author7, F., Author8, F., Author9, F., Author10, F., Author11, F., Author12, F., Author13, F., Author14, F., Author15, F., Author16, F., Author17, F., Author18, F., Author19, F., … Author21, F. (2024). A Large Collaborative Study. <i>Science</i>, <i>384</i>, 1–15.</div>\n</div>",
+    "inText": "(Author1 et al., 2024)"
+  }
+}

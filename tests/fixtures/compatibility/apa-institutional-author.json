@@ -1,19 +1,28 @@
 {
-  "description": "Institutional author",
+  "description": "APA: institutional author",
   "style": "apa",
   "locale": "en-US",
   "input": {
     "type": "report",
-    "id": "who2024",
-    "title": "Global Health Report 2024",
+    "id": "ibge2024",
+    "title": "Census 2024 Preliminary Results",
     "author": [
-      { "literal": "World Health Organization" }
+      {
+        "literal": "IBGE"
+      }
     ],
-    "issued": { "date-parts": [[2024]] },
-    "publisher": "WHO Press"
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "publisher": "Instituto Brasileiro de Geografia e Estatística",
+    "URL": "https://www.ibge.gov.br/census2024"
   },
   "expected": {
-    "reference": "World Health Organization. (2024). <span style=\"font-style: italic;\">Global Health Report 2024</span>. WHO Press.",
-    "inText": "(World Health Organization, 2024)"
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"ibge2024\" class=\"csl-entry\">IBGE. (2024). <i>Census 2024 Preliminary Results</i>. Instituto Brasileiro de Geografia e Estatística. https://www.ibge.gov.br/census2024</div>\n</div>",
+    "inText": "(IBGE, 2024)"
   }
 }

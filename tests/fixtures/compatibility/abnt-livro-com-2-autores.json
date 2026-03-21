@@ -1,0 +1,35 @@
+{
+  "description": "ABNT: livro com 2 autores",
+  "style": "abnt",
+  "locale": "pt-BR",
+  "input": {
+    "type": "book",
+    "id": "souza2023",
+    "title": "Metodologia da pesquisa científica",
+    "author": [
+      {
+        "family": "Souza",
+        "given": "Maria"
+      },
+      {
+        "family": "Santos",
+        "given": "Carlos Alberto"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "publisher": "Editora Atlas",
+    "publisher-place": "São Paulo",
+    "edition": "5",
+    "ISBN": "978-85-97123-45-6"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"souza2023\" class=\"csl-entry\">SOUZA, Maria; SANTOS, Carlos Alberto. <b>Metodologia da pesquisa científica</b>. 5. ed. São Paulo: Editora Atlas, 2023. </div>\n</div>",
+    "inText": "(Souza; Santos, 2023)"
+  }
+}

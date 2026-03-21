@@ -1,0 +1,36 @@
+{
+  "description": "APA: journal article with DOI, 2 authors",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "smith2024a",
+    "title": "A Study of Something Important",
+    "author": [
+      {
+        "family": "Smith",
+        "given": "John A."
+      },
+      {
+        "family": "Doe",
+        "given": "Jane B."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Journal of Important Studies",
+    "volume": "42",
+    "issue": "3",
+    "page": "100-115",
+    "DOI": "10.1234/jis.2024.001"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"smith2024a\" class=\"csl-entry\">Smith, J. A., &#38; Doe, J. B. (2024). A Study of Something Important. <i>Journal of Important Studies</i>, <i>42</i>(3), 100–115. https://doi.org/10.1234/jis.2024.001</div>\n</div>",
+    "inText": "(Smith &#38; Doe, 2024)"
+  }
+}

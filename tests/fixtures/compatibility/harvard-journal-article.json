@@ -1,0 +1,36 @@
+{
+  "description": "Harvard: journal article",
+  "style": "harvard",
+  "locale": "en-GB",
+  "input": {
+    "type": "article-journal",
+    "id": "harvard2024",
+    "title": "Sustainable urban planning in developing nations",
+    "author": [
+      {
+        "family": "Patel",
+        "given": "Raj"
+      },
+      {
+        "family": "Okonkwo",
+        "given": "Ngozi"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Urban Studies",
+    "volume": "61",
+    "issue": "4",
+    "page": "789-810",
+    "DOI": "10.1177/us.2024.789"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"harvard2024\" class=\"csl-entry\">Patel, R. and Okonkwo, N. (2024) “Sustainable urban planning in developing nations,” <i>Urban Studies</i>, 61(4), pp. 789–810. Available at: https://doi.org/10.1177/us.2024.789.</div>\n</div>",
+    "inText": "(Patel and Okonkwo, 2024)"
+  }
+}

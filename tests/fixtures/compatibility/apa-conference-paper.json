@@ -1,0 +1,35 @@
+{
+  "description": "APA: conference paper",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "paper-conference",
+    "id": "conf2024",
+    "title": "Advances in Neural Architecture Search",
+    "author": [
+      {
+        "family": "Kim",
+        "given": "Soo-Jin"
+      },
+      {
+        "family": "Park",
+        "given": "Min-Ho"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Proceedings of ICML 2024",
+    "event-title": "International Conference on Machine Learning",
+    "page": "1234-1245",
+    "publisher": "PMLR"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"conf2024\" class=\"csl-entry\">Kim, S.-J., &#38; Park, M.-H. (2024). Advances in Neural Architecture Search. <i>Proceedings of ICML 2024</i>, 1234–1245.</div>\n</div>",
+    "inText": "(Kim &#38; Park, 2024)"
+  }
+}

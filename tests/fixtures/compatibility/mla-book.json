@@ -1,0 +1,29 @@
+{
+  "description": "MLA: book",
+  "style": "mla",
+  "locale": "en-US",
+  "input": {
+    "type": "book",
+    "id": "mlabook2023",
+    "title": "The Rhetoric of Digital Spaces",
+    "author": [
+      {
+        "family": "Brown",
+        "given": "Michael"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "publisher": "Oxford University Press",
+    "ISBN": "978-0-19-876543-2"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"mlabook2023\" class=\"csl-entry\">Brown, Michael. <i>The Rhetoric of Digital Spaces</i>. Oxford University Press, 2023.</div>\n</div>",
+    "inText": "(Brown)"
+  }
+}

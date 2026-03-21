@@ -1,0 +1,47 @@
+{
+  "description": "APA: journal article, 5 authors",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "multi5",
+    "title": "Collaborative Research in Modern Science",
+    "author": [
+      {
+        "family": "García",
+        "given": "María"
+      },
+      {
+        "family": "Chen",
+        "given": "Wei"
+      },
+      {
+        "family": "O'Brien",
+        "given": "Patrick"
+      },
+      {
+        "family": "Müller",
+        "given": "Hans"
+      },
+      {
+        "family": "Tanaka",
+        "given": "Yuki"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "Nature Reviews",
+    "volume": "15",
+    "page": "1-20",
+    "DOI": "10.1038/nr.2023.001"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"multi5\" class=\"csl-entry\">García, M., Chen, W., O’Brien, P., Müller, H., &#38; Tanaka, Y. (2023). Collaborative Research in Modern Science. <i>Nature Reviews</i>, <i>15</i>, 1–20. https://doi.org/10.1038/nr.2023.001</div>\n</div>",
+    "inText": "(García et al., 2023)"
+  }
+}

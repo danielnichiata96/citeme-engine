@@ -1,0 +1,21 @@
+{
+  "description": "Edge: article with no year",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "noyear",
+    "title": "Timeless Insights",
+    "author": [
+      {
+        "family": "Anonymous",
+        "given": "A."
+      }
+    ],
+    "container-title": "Obscure Journal"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"noyear\" class=\"csl-entry\">Anonymous, A. (n.d.). Timeless Insights. <i>Obscure Journal</i>.</div>\n</div>",
+    "inText": "(Anonymous, n.d.)"
+  }
+}

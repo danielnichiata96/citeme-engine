@@ -1,20 +1,29 @@
 {
-  "description": "Webpage",
+  "description": "APA: webpage",
   "style": "apa",
   "locale": "en-US",
   "input": {
     "type": "webpage",
-    "id": "wiki2024",
-    "title": "Citation Style Language",
+    "id": "web2024",
+    "title": "Understanding Climate Change",
     "author": [
-      { "literal": "Wikipedia contributors" }
+      {
+        "literal": "World Health Organization"
+      }
     ],
-    "issued": { "date-parts": [[2024]] },
-    "container-title": "Wikipedia",
-    "URL": "https://en.wikipedia.org/wiki/Citation_Style_Language"
+    "issued": {
+      "date-parts": [
+        [
+          2024,
+          3,
+          15
+        ]
+      ]
+    },
+    "URL": "https://www.who.int/climate-change"
   },
   "expected": {
-    "reference": "Wikipedia contributors. (2024,). <span style=\"font-style: italic;\">Citation Style Language</span>. Wikipedia. <a href=\"https://en.wikipedia.org/wiki/Citation_Style_Language\">https://en.wikipedia.org/wiki/Citation_Style_Language</a>",
-    "inText": "(Wikipedia contributors, 2024)"
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"web2024\" class=\"csl-entry\">World Health Organization. (2024, March 15). <i>Understanding Climate Change</i>. https://www.who.int/climate-change</div>\n</div>",
+    "inText": "(World Health Organization, 2024)"
   }
 }

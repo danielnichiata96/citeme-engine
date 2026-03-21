@@ -1,0 +1,31 @@
+{
+  "description": "APA: book chapter",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "chapter",
+    "id": "chapter2024",
+    "title": "Machine Learning Fundamentals",
+    "author": [
+      {
+        "family": "Lee",
+        "given": "Sarah"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Handbook of Artificial Intelligence",
+    "publisher": "Springer",
+    "page": "45-89",
+    "DOI": "10.1007/978-3-030-12345-6_3"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"chapter2024\" class=\"csl-entry\">Lee, S. (2024). Machine Learning Fundamentals. In <i>Handbook of Artificial Intelligence</i> (pp. 45–89). Springer. https://doi.org/10.1007/978-3-030-12345-6_3</div>\n</div>",
+    "inText": "(Lee, 2024)"
+  }
+}

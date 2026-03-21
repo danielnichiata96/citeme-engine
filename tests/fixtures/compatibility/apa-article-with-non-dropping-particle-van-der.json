@@ -1,0 +1,31 @@
+{
+  "description": "APA: article with non-dropping particle (van der)",
+  "style": "apa",
+  "locale": "en-US",
+  "input": {
+    "type": "article-journal",
+    "id": "vanderberg2024",
+    "title": "Particle Physics in the 21st Century",
+    "author": [
+      {
+        "family": "Berg",
+        "given": "Jan",
+        "non-dropping-particle": "van der"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Physical Review Letters",
+    "volume": "132",
+    "DOI": "10.1103/physrevlett.132.001"
+  },
+  "expected": {
+    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"vanderberg2024\" class=\"csl-entry\">van der Berg, J. (2024). Particle Physics in the 21st Century. <i>Physical Review Letters</i>, <i>132</i>. https://doi.org/10.1103/physrevlett.132.001</div>\n</div>",
+    "inText": "(van der Berg, 2024)"
+  }
+}
