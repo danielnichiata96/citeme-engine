@@ -1,0 +1,18 @@
+{
+  "description": "ABNT book with uppercase family name",
+  "style": "abnt",
+  "locale": "pt-BR",
+  "input": {
+    "type": "book",
+    "id": "santos2020",
+    "title": "Introdu\u00e7\u00e3o \u00e0 Programa\u00e7\u00e3o",
+    "author": [{ "family": "Santos", "given": "Maria" }],
+    "issued": { "date-parts": [[2020]] },
+    "publisher": "Editora Nacional",
+    "publisher-place": "S\u00e3o Paulo"
+  },
+  "expected": {
+    "reference": "SANTOS, Maria. <span style=\"font-weight: bold;\">Introdu\u00e7\u00e3o \u00e0 Programa\u00e7\u00e3o</span>. S\u00e3o Paulo: Editora Nacional, 2020.",
+    "inText": "(SANTOS, 2020)"
+  }
+}

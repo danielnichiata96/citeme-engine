@@ -1,0 +1,19 @@
+{
+  "description": "ABNT journal article with uppercase family name",
+  "style": "abnt",
+  "locale": "pt-BR",
+  "input": {
+    "type": "article-journal",
+    "id": "silva2024",
+    "title": "Um estudo importante",
+    "author": [{ "family": "Silva", "given": "Jo\u00e3o" }],
+    "issued": { "date-parts": [[2024]] },
+    "container-title": "Revista Brasileira de Testes",
+    "volume": "15",
+    "page": "1-20"
+  },
+  "expected": {
+    "reference": "SILVA, Jo\u00e3o. Um estudo importante. <span style=\"font-weight: bold;\">Revista Brasileira de Testes</span>,  v. 15, p. 1\u201320, 2024.",
+    "inText": "(SILVA, 2024)"
+  }
+}
