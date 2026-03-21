@@ -1,4 +1,5 @@
 pub mod bibtex;
+pub mod ris;
 
 use serde::{Deserialize, Serialize};
 

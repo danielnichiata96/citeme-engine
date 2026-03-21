@@ -1,0 +1,20 @@
+TY  - JOUR
+AU  - Smith, John
+AU  - Doe, Jane
+TI  - A Study of Something
+JO  - Journal of Testing
+PY  - 2024
+VL  - 42
+IS  - 3
+SP  - 100
+EP  - 115
+DO  - 10.1234/test.2024
+ER  -
+
+TY  - BOOK
+AU  - Kwan, Kevin
+TI  - Crazy Rich Asians
+PB  - Anchor Books
+PY  - 2014
+CY  - New York
+ER  -
