@@ -154,6 +154,16 @@ impl CitationEngine {
             return Ok(Self::build_fallback(csl_json_str));
         }
 
+        // Apply ABNT post-processing if requested
+        let (reference, in_text) = if options.abnt_post_process {
+            (
+                crate::abnt::post_process_abnt(&reference, false),
+                crate::abnt::post_process_abnt(&in_text, true),
+            )
+        } else {
+            (reference, in_text)
+        };
+
         Ok(FormatResult { reference, in_text })
     }
 
@@ -242,6 +252,15 @@ impl CitationEngine {
                 let item_json = serde_json::to_string(&items[i]).unwrap_or_default();
                 results.push(Self::build_fallback(&item_json));
             } else {
+                // Apply ABNT post-processing if requested
+                let (reference, in_text) = if options.abnt_post_process {
+                    (
+                        crate::abnt::post_process_abnt(&reference, false),
+                        crate::abnt::post_process_abnt(&in_text, true),
+                    )
+                } else {
+                    (reference, in_text)
+                };
                 results.push(FormatResult { reference, in_text });
             }
         }
@@ -421,5 +440,31 @@ mod tests {
 
         let results = engine.format_batch("[]", "apa", "en-US", &FormatOptions::default()).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_format_one_abnt_uppercase() {
+        let abnt_csl = include_str!("../../../tests/fixtures/styles/abnt.csl");
+        let pt_br_locale = include_str!("../../../tests/fixtures/locales/locales-pt-BR.xml");
+
+        let mut engine = CitationEngine::new();
+        engine.load_style("abnt", abnt_csl).unwrap();
+        engine.load_locale("pt-BR", pt_br_locale).unwrap();
+
+        let csl_json = r#"{
+            "type": "article-journal",
+            "title": "Um estudo importante",
+            "author": [{"family": "Silva", "given": "João"}],
+            "issued": {"date-parts": [[2024]]},
+            "container-title": "Revista Brasileira de Testes"
+        }"#;
+
+        let opts = FormatOptions {
+            abnt_post_process: true,
+            ..Default::default()
+        };
+
+        let result = engine.format_one(csl_json, "abnt", "pt-BR", &opts).unwrap();
+        assert!(result.reference.contains("SILVA"), "ABNT reference should have uppercased family name: {}", result.reference);
     }
 }
