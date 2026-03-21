@@ -20,6 +20,7 @@ if command -v wasm-opt &> /dev/null; then
   wasm-opt js/pkg/citeme_engine_wasm_bg.wasm \
     -Oz \
     --enable-bulk-memory \
+    --enable-nontrapping-float-to-int \
     -o js/pkg/citeme_engine_wasm_bg.wasm
   echo "wasm-opt applied"
 else

@@ -83,6 +83,28 @@ impl WasmCitationEngine {
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
+    /// Parse BibTeX content and return CSL-JSON array.
+    #[wasm_bindgen(js_name = "parseBibtex")]
+    pub fn parse_bibtex(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
+        let options = citeme_engine_core::parsers::ParseOptions {
+            max_entries,
+            ..Default::default()
+        };
+        let result = citeme_engine_core::parsers::bibtex::parse_bibtex(input, &options);
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Parse RIS content and return CSL-JSON array.
+    #[wasm_bindgen(js_name = "parseRis")]
+    pub fn parse_ris(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
+        let options = citeme_engine_core::parsers::ParseOptions {
+            max_entries,
+            ..Default::default()
+        };
+        let result = citeme_engine_core::parsers::ris::parse_ris(input, &options);
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+    }
+
     /// Get engine version.
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
