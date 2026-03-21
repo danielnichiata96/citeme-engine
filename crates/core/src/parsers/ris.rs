@@ -25,6 +25,14 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
         };
     }
 
+    // DoS guard: reject oversized input before parsing
+    if input.len() > options.max_input_bytes {
+        return ParseResult {
+            entries: vec![], errors: vec![],
+            format: "ris".to_string(), truncated: true, scanned_entries: 0,
+        };
+    }
+
     let mut entries: Vec<Value> = Vec::new();
     let mut current: Option<serde_json::Map<String, Value>> = None;
     let mut authors: Vec<Value> = Vec::new();
@@ -39,7 +47,7 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
         // Handle "ER  -" (end record) which may lack trailing space
         let (tag, value) = if let Some(pos) = line.find("  - ") {
             (line[..pos].trim(), line[pos + 4..].trim())
-        } else if line.trim() == "ER  -" || line.trim().starts_with("ER  -") {
+        } else if line.starts_with("ER  -") {
             ("ER", "")
         } else {
             continue
