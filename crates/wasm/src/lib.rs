@@ -107,6 +107,17 @@ impl WasmCitationEngine {
         serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     }
 
+    /// Validate and pass through CSL-JSON input. Accepts single object or array.
+    #[wasm_bindgen(js_name = "parseCslJson")]
+    pub fn parse_csl_json(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
+        let options = citeme_engine_core::parsers::ParseOptions {
+            max_entries,
+            ..Default::default()
+        };
+        let result = citeme_engine_core::parsers::csl_json::parse_csl_json(input, &options);
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+    }
+
     /// Get engine version.
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
