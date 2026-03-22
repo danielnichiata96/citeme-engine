@@ -133,11 +133,7 @@ impl CitationEngine {
 
         let reference = rendered.bibliography
             .and_then(|bib| bib.items.into_iter().next())
-            .map(|item| {
-                let mut buf = String::new();
-                let _ = item.content.write_buf(&mut buf, buf_format);
-                buf.trim().to_string()
-            })
+            .map(|item| Self::render_bib_item(&item, buf_format))
             .unwrap_or_default();
 
         // Extract in-text citation
@@ -216,10 +212,8 @@ impl CitationEngine {
 
         // Build a lookup by key for bibliography items (they may be sorted/deduped)
         let bib_map: HashMap<String, String> = rendered.bibliography
-            .map(|bib| bib.items.into_iter().map(|bib_item| {
-                let mut buf = String::new();
-                let _ = bib_item.content.write_buf(&mut buf, buf_format);
-                (bib_item.key.clone(), buf.trim().to_string())
+            .map(|bib| bib.items.iter().map(|bib_item| {
+                (bib_item.key.clone(), Self::render_bib_item(bib_item, buf_format))
             }).collect())
             .unwrap_or_default();
 
@@ -249,6 +243,22 @@ impl CitationEngine {
         }
 
         Ok(results)
+    }
+
+    /// Render a BibliographyItem to string, including first_field prefix
+    /// (numbering like "[1]" or "1." for numeric styles like IEEE/Vancouver).
+    fn render_bib_item(item: &hayagriva::BibliographyItem, buf_format: BufWriteFormat) -> String {
+        let mut buf = String::new();
+        // first_field contains the numbering prefix for numeric styles
+        if let Some(ref prefix) = item.first_field {
+            let _ = prefix.write_buf(&mut buf, buf_format);
+            // Add space between prefix and content if prefix doesn't end with space
+            if !buf.is_empty() && !buf.ends_with(' ') {
+                buf.push(' ');
+            }
+        }
+        let _ = item.content.write_buf(&mut buf, buf_format);
+        buf.trim().to_string()
     }
 
     /// Apply ABNT post-processing if the options flag is set.

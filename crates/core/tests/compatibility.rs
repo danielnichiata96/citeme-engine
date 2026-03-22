@@ -69,6 +69,8 @@ fn normalize_to_plain(s: &str) -> String {
     out = out.replace('\u{00a0}', " ");
     out = out.split_whitespace().collect::<Vec<_>>().join(" ");
     out = out.replace(" .", ".");
+    out = out.replace(" ;", ";");
+    out = out.replace(" :", ":");
     out.trim().to_string()
 }
 
