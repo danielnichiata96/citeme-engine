@@ -12,8 +12,10 @@ pub struct WasmCitationEngine {
 #[wasm_bindgen]
 impl WasmCitationEngine {
     /// Create a new engine instance.
+    /// Installs panic hook so Rust panics produce readable JS console errors.
     #[wasm_bindgen(constructor)]
     pub fn new() -> WasmCitationEngine {
+        console_error_panic_hook::set_once();
         WasmCitationEngine {
             inner: CitationEngine::new(),
         }

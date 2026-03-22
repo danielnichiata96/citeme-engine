@@ -136,6 +136,7 @@ name = "citeme-engine-wasm"
 version = "0.1.0"
 dependencies = [
  "citeme-engine-core",
+ "console_error_panic_hook",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
@@ -165,6 +166,16 @@ name = "clap_lex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
+
+[[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "criterion"
