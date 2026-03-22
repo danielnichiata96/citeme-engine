@@ -151,20 +151,11 @@ impl CitationEngine {
 
         // Fallback: if Hayagriva produced empty output, build a degraded citation
         if reference.is_empty() && in_text.is_empty() {
-            return Ok(Self::build_fallback(csl_json_str));
+            let fallback = Self::build_fallback(csl_json_str);
+            return Ok(Self::apply_abnt_if_needed(fallback, options));
         }
 
-        // Apply ABNT post-processing if requested
-        let (reference, in_text) = if options.abnt_post_process {
-            (
-                crate::abnt::post_process_abnt(&reference, false),
-                crate::abnt::post_process_abnt(&in_text, true),
-            )
-        } else {
-            (reference, in_text)
-        };
-
-        Ok(FormatResult { reference, in_text })
+        Ok(Self::apply_abnt_if_needed(FormatResult { reference, in_text }, options))
     }
 
     /// Format a batch of CSL-JSON items in one call.
@@ -248,24 +239,28 @@ impl CitationEngine {
                 buf.trim().to_string()
             };
 
-            if reference.is_empty() && in_text.is_empty() {
+            let result = if reference.is_empty() && in_text.is_empty() {
                 let item_json = serde_json::to_string(&items[i]).unwrap_or_default();
-                results.push(Self::build_fallback(&item_json));
+                Self::build_fallback(&item_json)
             } else {
-                // Apply ABNT post-processing if requested
-                let (reference, in_text) = if options.abnt_post_process {
-                    (
-                        crate::abnt::post_process_abnt(&reference, false),
-                        crate::abnt::post_process_abnt(&in_text, true),
-                    )
-                } else {
-                    (reference, in_text)
-                };
-                results.push(FormatResult { reference, in_text });
-            }
+                FormatResult { reference, in_text }
+            };
+            results.push(Self::apply_abnt_if_needed(result, options));
         }
 
         Ok(results)
+    }
+
+    /// Apply ABNT post-processing if the options flag is set.
+    fn apply_abnt_if_needed(result: FormatResult, options: &FormatOptions) -> FormatResult {
+        if options.abnt_post_process {
+            FormatResult {
+                reference: crate::abnt::post_process_abnt(&result.reference, false),
+                in_text: crate::abnt::post_process_abnt(&result.in_text, true),
+            }
+        } else {
+            result
+        }
     }
 
     /// Build a minimal citation when the CSL engine produces empty output.
@@ -292,11 +287,7 @@ impl CitationEngine {
 
         let title = v["title"].as_str().unwrap_or("Untitled");
 
-        let url = v["URL"].as_str()
-            .or_else(|| v["DOI"].as_str().map(|_| ""))
-            .unwrap_or("");
-
-        let url_part = if !url.is_empty() {
+        let url_part = if let Some(url) = v["URL"].as_str() {
             format!(" {url}")
         } else if let Some(doi) = v["DOI"].as_str() {
             format!(" https://doi.org/{doi}")

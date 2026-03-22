@@ -1,13 +1,13 @@
 // js/index.js
 import init, { WasmCitationEngine } from './pkg/citeme_engine_wasm.js';
 
-let initialized = false;
+let initPromise = null;
 
 export async function createEngine() {
-  if (!initialized) {
-    await init();
-    initialized = true;
+  if (!initPromise) {
+    initPromise = init();
   }
+  await initPromise;
   return new WasmCitationEngine();
 }
 

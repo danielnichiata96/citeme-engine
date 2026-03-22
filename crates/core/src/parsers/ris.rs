@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use super::{ParseOptions, ParseResult};
+use super::{ParseOptions, ParseResult, ParseErrorInfo};
 
 /// RIS type tag → CSL-JSON type mapping
 fn ris_type_to_csl(ty: &str) -> &'static str {
@@ -28,7 +28,12 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
     // DoS guard: reject oversized input before parsing
     if input.len() > options.max_input_bytes {
         return ParseResult {
-            entries: vec![], errors: vec![],
+            entries: vec![],
+            errors: vec![ParseErrorInfo {
+                preview: format!("Input size {} bytes exceeds limit {} bytes",
+                    input.len(), options.max_input_bytes),
+                error: "input too large".to_string(),
+            }],
             format: "ris".to_string(), truncated: true, scanned_entries: 0,
         };
     }
