@@ -149,12 +149,17 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
     }
 
     // Handle entry without trailing ER
+    let mut truncated = false;
     if let Some(mut entry) = current.take() {
         if !authors.is_empty() {
             entry.insert("author".into(), json!(authors));
         }
         scanned += 1;
-        entries.push(Value::Object(entry));
+        if options.max_entries.map_or(true, |max| entries.len() < max) {
+            entries.push(Value::Object(entry));
+        } else {
+            truncated = true;
+        }
     }
 
     // Clean up internal fields (_sp, _ep)
@@ -167,7 +172,7 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
 
     ParseResult {
         entries, errors: vec![],
-        format: "ris".to_string(), truncated: false, scanned_entries: scanned,
+        format: "ris".to_string(), truncated, scanned_entries: scanned,
     }
 }
 

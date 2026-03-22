@@ -171,11 +171,21 @@ impl CitationEngine {
         let style = self.styles.get(style_name)
             .ok_or_else(|| EngineError::StyleNotLoaded(style_name.into()))?;
 
-        let items: Vec<serde_json::Value> = serde_json::from_str(csl_json_array_str)
+        let mut items: Vec<serde_json::Value> = serde_json::from_str(csl_json_array_str)
             .map_err(|e| EngineError::InvalidCslJson(format!("{e}")))?;
 
         if items.is_empty() {
             return Ok(vec![]);
+        }
+
+        // Inject synthetic ids for items that lack them, so the bibliography
+        // key-based lookup works correctly for all items.
+        for (i, item) in items.iter_mut().enumerate() {
+            if let Some(obj) = item.as_object_mut() {
+                if !obj.contains_key("id") || obj["id"].as_str().unwrap_or("").is_empty() {
+                    obj.insert("id".to_string(), serde_json::Value::String(format!("_citeme_batch_{i}")));
+                }
+            }
         }
 
         let locale = self.resolve_locale(locale_code);
@@ -184,7 +194,7 @@ impl CitationEngine {
             OutputFormat::Plain => BufWriteFormat::Plain,
         };
 
-        // Parse all items first
+        // Parse all items
         let parsed_items: Vec<hayagriva::citationberg::json::Item> = items.iter()
             .map(|v| serde_json::from_value(v.clone())
                 .map_err(|e| EngineError::InvalidCslJson(format!("{e}"))))
@@ -210,7 +220,8 @@ impl CitationEngine {
             locale_files: &self.locales,
         });
 
-        // Build a lookup by key for bibliography items (they may be sorted/deduped)
+        // Build bibliography key-based lookup.
+        // All items now have ids (synthetic ones injected above for items without).
         let bib_map: HashMap<String, String> = rendered.bibliography
             .map(|bib| bib.items.iter().map(|bib_item| {
                 (bib_item.key.clone(), Self::render_bib_item(bib_item, buf_format))
@@ -223,7 +234,7 @@ impl CitationEngine {
         for (i, cite) in rendered.citations.iter().enumerate() {
             let item_key = parsed_items[i].id()
                 .map(|cow| cow.into_owned())
-                .unwrap_or_else(|| format!("item-{i}"));
+                .unwrap_or_else(|| format!("_citeme_batch_{i}"));
 
             let reference = bib_map.get(&item_key).cloned().unwrap_or_default();
 
@@ -467,5 +478,37 @@ mod tests {
 
         let result = engine.format_one(csl_json, "abnt", "pt-BR", &opts).unwrap();
         assert!(result.reference.contains("SILVA"), "ABNT reference should have uppercased family name: {}", result.reference);
+    }
+
+    #[test]
+    fn test_format_batch_items_without_id() {
+        // Regression: items without "id" field should still get bibliography output
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let csl_json_array = r#"[
+            {
+                "type": "article-journal",
+                "title": "First Paper No Id",
+                "author": [{"family": "Smith", "given": "John"}],
+                "issued": {"date-parts": [[2024]]}
+            },
+            {
+                "type": "book",
+                "title": "Second Book No Id",
+                "author": [{"family": "Doe", "given": "Jane"}],
+                "issued": {"date-parts": [[2023]]}
+            }
+        ]"#;
+
+        let opts = FormatOptions::default();
+        let results = engine.format_batch(csl_json_array, "apa", "en-US", &opts).unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert!(!results[0].reference.is_empty(), "first item reference should not be empty: {:?}", results[0]);
+        assert!(!results[1].reference.is_empty(), "second item reference should not be empty: {:?}", results[1]);
+        assert!(results[0].reference.contains("Smith"), "first reference should contain Smith: {}", results[0].reference);
+        assert!(results[1].reference.contains("Doe"), "second reference should contain Doe: {}", results[1].reference);
     }
 }

@@ -226,16 +226,11 @@ fn test_compatibility_fixtures() {
         }
     }
 
-    assert!(total >= 10,
-        "GATE FAIL: only {total} fixtures found — need at least 10.");
+    assert!(total >= 27,
+        "GATE FAIL: only {total} fixtures found — need at least 27 \
+         (7 styles × ~4 types each).");
 
-    // Known divergences from citation-js (tracked, not bugs):
-    // - ABNT in-text: our engine uppercases per NBR 10520:2023, citation-js doesn't
-    // - Vancouver/IEEE: Hayagriva omits csl-left-margin numbering (1., [1])
-    // - ABNT tese: Hayagriva nests italic/bold spans differently
-    // Gate: 75% accounts for known Hayagriva rendering limitations.
-    // Raise as Hayagriva improves its CSL test suite coverage.
-    assert!(pass_rate >= 75.0,
-        "GATE FAIL: parity {pass_rate:.0}% < 75% threshold. \
+    assert!(pass_rate >= 90.0,
+        "GATE FAIL: parity {pass_rate:.0}% < 90% threshold. \
          {failed} fixture(s) diverge from citation-js output.");
 }

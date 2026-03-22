@@ -196,8 +196,9 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
             let mut entries = Vec::new();
             let mut errors = Vec::new();
             let mut scanned = 0;
+            let mut truncated = false;
 
-            for chunk in input.split("\n@").skip(0) {
+            for chunk in input.split("\n@") {
                 let chunk = chunk.trim();
                 if chunk.is_empty() { continue; }
 
@@ -215,7 +216,10 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
 
                 scanned += 1;
                 if let Some(max) = options.max_entries {
-                    if entries.len() >= max { break; }
+                    if entries.len() >= max {
+                        truncated = true;
+                        break;
+                    }
                 }
 
                 match from_biblatex_str(&entry_str) {
@@ -237,7 +241,7 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
                 entries,
                 errors,
                 format: "bibtex".to_string(),
-                truncated: false,
+                truncated,
                 scanned_entries: scanned,
             }
         }
