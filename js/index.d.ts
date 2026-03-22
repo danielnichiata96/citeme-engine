@@ -26,6 +26,9 @@ export declare class WasmCitationEngine {
   parseMedline(input: string, maxEntries?: number): string;
   detectFormat(input: string): 'bibtex' | 'ris' | 'csl-json' | 'medline' | 'unknown';
   parseAuto(input: string, maxEntries?: number): string;
+  exportBibtex(cslJsonStr: string): string;
+  exportRis(cslJsonStr: string): string;
+  exportHayagriva(cslJsonStr: string): string;
   version(): string;
 }
 

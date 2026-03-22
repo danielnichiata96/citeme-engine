@@ -163,6 +163,42 @@ impl WasmCitationEngine {
         serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     }
 
+    /// Export CSL-JSON to BibTeX string. Input: JSON string (object or array).
+    #[wasm_bindgen(js_name = "exportBibtex")]
+    pub fn export_bibtex(&self, csl_json_str: &str) -> Result<String, JsError> {
+        let value: serde_json::Value = serde_json::from_str(csl_json_str)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        match value {
+            serde_json::Value::Array(items) => Ok(citeme_engine_core::export::bibtex::csl_json_array_to_bibtex(&items)),
+            obj @ serde_json::Value::Object(_) => Ok(citeme_engine_core::export::bibtex::csl_json_to_bibtex(&obj)),
+            _ => Err(JsError::new("expected JSON object or array")),
+        }
+    }
+
+    /// Export CSL-JSON to RIS string. Input: JSON string (object or array).
+    #[wasm_bindgen(js_name = "exportRis")]
+    pub fn export_ris(&self, csl_json_str: &str) -> Result<String, JsError> {
+        let value: serde_json::Value = serde_json::from_str(csl_json_str)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        match value {
+            serde_json::Value::Array(items) => Ok(citeme_engine_core::export::ris::csl_json_array_to_ris(&items)),
+            obj @ serde_json::Value::Object(_) => Ok(citeme_engine_core::export::ris::csl_json_to_ris(&obj)),
+            _ => Err(JsError::new("expected JSON object or array")),
+        }
+    }
+
+    /// Export CSL-JSON to Hayagriva YAML string. Input: JSON string (object or array).
+    #[wasm_bindgen(js_name = "exportHayagriva")]
+    pub fn export_hayagriva(&self, csl_json_str: &str) -> Result<String, JsError> {
+        let value: serde_json::Value = serde_json::from_str(csl_json_str)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        match value {
+            serde_json::Value::Array(items) => Ok(citeme_engine_core::export::hayagriva::csl_json_array_to_hayagriva(&items)),
+            obj @ serde_json::Value::Object(_) => Ok(citeme_engine_core::export::hayagriva::csl_json_to_hayagriva(&obj)),
+            _ => Err(JsError::new("expected JSON object or array")),
+        }
+    }
+
     /// Get engine version.
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
