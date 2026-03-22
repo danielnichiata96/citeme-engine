@@ -1,0 +1,1302 @@
+[
+  {
+    "type": "article-journal",
+    "id": "item000",
+    "title": "Research paper number 0 on advanced topics",
+    "author": [
+      {
+        "family": "Smith",
+        "given": "John"
+      },
+      {
+        "family": "Garc\u00eda",
+        "given": "Yuki"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Nature",
+    "volume": "1",
+    "page": "1-15",
+    "DOI": "10.1234/test.2020.000"
+  },
+  {
+    "type": "article-journal",
+    "id": "item001",
+    "title": "Research paper number 1 on advanced topics",
+    "author": [
+      {
+        "family": "Johnson",
+        "given": "Jane"
+      },
+      {
+        "family": "M\u00fcller",
+        "given": "Priya"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Science",
+    "volume": "2",
+    "page": "11-25",
+    "DOI": "10.1234/test.2021.001"
+  },
+  {
+    "type": "article-journal",
+    "id": "item002",
+    "title": "Research paper number 2 on advanced topics",
+    "author": [
+      {
+        "family": "Chen",
+        "given": "Wei"
+      },
+      {
+        "family": "Tanaka",
+        "given": "Ahmed"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Cell",
+    "volume": "3",
+    "page": "21-35",
+    "DOI": "10.1234/test.2022.002"
+  },
+  {
+    "type": "article-journal",
+    "id": "item003",
+    "title": "Research paper number 3 on advanced topics",
+    "author": [
+      {
+        "family": "Garc\u00eda",
+        "given": "Mar\u00eda"
+      },
+      {
+        "family": "Patel",
+        "given": "Olga"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "PNAS",
+    "volume": "4",
+    "page": "31-45",
+    "DOI": "10.1234/test.2023.003"
+  },
+  {
+    "type": "article-journal",
+    "id": "item004",
+    "title": "Research paper number 4 on advanced topics",
+    "author": [
+      {
+        "family": "M\u00fcller",
+        "given": "Hans"
+      },
+      {
+        "family": "Kim",
+        "given": "Carlos"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Physical Review Letters",
+    "volume": "5",
+    "page": "41-55",
+    "DOI": "10.1234/test.2024.004"
+  },
+  {
+    "type": "article-journal",
+    "id": "item005",
+    "title": "Research paper number 5 on advanced topics",
+    "author": [
+      {
+        "family": "Tanaka",
+        "given": "Yuki"
+      },
+      {
+        "family": "Silva",
+        "given": "John"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Journal of Chemical Physics",
+    "volume": "6",
+    "page": "51-65",
+    "DOI": "10.1234/test.2020.005"
+  },
+  {
+    "type": "article-journal",
+    "id": "item006",
+    "title": "Research paper number 6 on advanced topics",
+    "author": [
+      {
+        "family": "Patel",
+        "given": "Priya"
+      },
+      {
+        "family": "Brown",
+        "given": "Jane"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Ecology",
+    "volume": "7",
+    "page": "61-75",
+    "DOI": "10.1234/test.2021.006"
+  },
+  {
+    "type": "article-journal",
+    "id": "item007",
+    "title": "Research paper number 7 on advanced topics",
+    "author": [
+      {
+        "family": "Kim",
+        "given": "Ahmed"
+      },
+      {
+        "family": "Smith",
+        "given": "Wei"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Lancet",
+    "volume": "8",
+    "page": "71-85",
+    "DOI": "10.1234/test.2022.007"
+  },
+  {
+    "type": "article-journal",
+    "id": "item008",
+    "title": "Research paper number 8 on advanced topics",
+    "author": [
+      {
+        "family": "Silva",
+        "given": "Olga"
+      },
+      {
+        "family": "Johnson",
+        "given": "Mar\u00eda"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "BMJ",
+    "volume": "9",
+    "page": "81-95",
+    "DOI": "10.1234/test.2023.008"
+  },
+  {
+    "type": "article-journal",
+    "id": "item009",
+    "title": "Research paper number 9 on advanced topics",
+    "author": [
+      {
+        "family": "Brown",
+        "given": "Carlos"
+      },
+      {
+        "family": "Chen",
+        "given": "Hans"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "JAMA",
+    "volume": "10",
+    "page": "91-105",
+    "DOI": "10.1234/test.2024.009"
+  },
+  {
+    "type": "article-journal",
+    "id": "item010",
+    "title": "Research paper number 10 on advanced topics",
+    "author": [
+      {
+        "family": "Smith",
+        "given": "John"
+      },
+      {
+        "family": "Garc\u00eda",
+        "given": "Yuki"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Nature",
+    "volume": "11",
+    "page": "101-115",
+    "DOI": "10.1234/test.2020.010"
+  },
+  {
+    "type": "article-journal",
+    "id": "item011",
+    "title": "Research paper number 11 on advanced topics",
+    "author": [
+      {
+        "family": "Johnson",
+        "given": "Jane"
+      },
+      {
+        "family": "M\u00fcller",
+        "given": "Priya"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Science",
+    "volume": "12",
+    "page": "111-125",
+    "DOI": "10.1234/test.2021.011"
+  },
+  {
+    "type": "article-journal",
+    "id": "item012",
+    "title": "Research paper number 12 on advanced topics",
+    "author": [
+      {
+        "family": "Chen",
+        "given": "Wei"
+      },
+      {
+        "family": "Tanaka",
+        "given": "Ahmed"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Cell",
+    "volume": "13",
+    "page": "121-135",
+    "DOI": "10.1234/test.2022.012"
+  },
+  {
+    "type": "article-journal",
+    "id": "item013",
+    "title": "Research paper number 13 on advanced topics",
+    "author": [
+      {
+        "family": "Garc\u00eda",
+        "given": "Mar\u00eda"
+      },
+      {
+        "family": "Patel",
+        "given": "Olga"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "PNAS",
+    "volume": "14",
+    "page": "131-145",
+    "DOI": "10.1234/test.2023.013"
+  },
+  {
+    "type": "article-journal",
+    "id": "item014",
+    "title": "Research paper number 14 on advanced topics",
+    "author": [
+      {
+        "family": "M\u00fcller",
+        "given": "Hans"
+      },
+      {
+        "family": "Kim",
+        "given": "Carlos"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Physical Review Letters",
+    "volume": "15",
+    "page": "141-155",
+    "DOI": "10.1234/test.2024.014"
+  },
+  {
+    "type": "article-journal",
+    "id": "item015",
+    "title": "Research paper number 15 on advanced topics",
+    "author": [
+      {
+        "family": "Tanaka",
+        "given": "Yuki"
+      },
+      {
+        "family": "Silva",
+        "given": "John"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Journal of Chemical Physics",
+    "volume": "16",
+    "page": "151-165",
+    "DOI": "10.1234/test.2020.015"
+  },
+  {
+    "type": "article-journal",
+    "id": "item016",
+    "title": "Research paper number 16 on advanced topics",
+    "author": [
+      {
+        "family": "Patel",
+        "given": "Priya"
+      },
+      {
+        "family": "Brown",
+        "given": "Jane"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Ecology",
+    "volume": "17",
+    "page": "161-175",
+    "DOI": "10.1234/test.2021.016"
+  },
+  {
+    "type": "article-journal",
+    "id": "item017",
+    "title": "Research paper number 17 on advanced topics",
+    "author": [
+      {
+        "family": "Kim",
+        "given": "Ahmed"
+      },
+      {
+        "family": "Smith",
+        "given": "Wei"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Lancet",
+    "volume": "18",
+    "page": "171-185",
+    "DOI": "10.1234/test.2022.017"
+  },
+  {
+    "type": "article-journal",
+    "id": "item018",
+    "title": "Research paper number 18 on advanced topics",
+    "author": [
+      {
+        "family": "Silva",
+        "given": "Olga"
+      },
+      {
+        "family": "Johnson",
+        "given": "Mar\u00eda"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "BMJ",
+    "volume": "19",
+    "page": "181-195",
+    "DOI": "10.1234/test.2023.018"
+  },
+  {
+    "type": "article-journal",
+    "id": "item019",
+    "title": "Research paper number 19 on advanced topics",
+    "author": [
+      {
+        "family": "Brown",
+        "given": "Carlos"
+      },
+      {
+        "family": "Chen",
+        "given": "Hans"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "JAMA",
+    "volume": "20",
+    "page": "191-205",
+    "DOI": "10.1234/test.2024.019"
+  },
+  {
+    "type": "article-journal",
+    "id": "item020",
+    "title": "Research paper number 20 on advanced topics",
+    "author": [
+      {
+        "family": "Smith",
+        "given": "John"
+      },
+      {
+        "family": "Garc\u00eda",
+        "given": "Yuki"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Nature",
+    "volume": "21",
+    "page": "201-215",
+    "DOI": "10.1234/test.2020.020"
+  },
+  {
+    "type": "article-journal",
+    "id": "item021",
+    "title": "Research paper number 21 on advanced topics",
+    "author": [
+      {
+        "family": "Johnson",
+        "given": "Jane"
+      },
+      {
+        "family": "M\u00fcller",
+        "given": "Priya"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Science",
+    "volume": "22",
+    "page": "211-225",
+    "DOI": "10.1234/test.2021.021"
+  },
+  {
+    "type": "article-journal",
+    "id": "item022",
+    "title": "Research paper number 22 on advanced topics",
+    "author": [
+      {
+        "family": "Chen",
+        "given": "Wei"
+      },
+      {
+        "family": "Tanaka",
+        "given": "Ahmed"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Cell",
+    "volume": "23",
+    "page": "221-235",
+    "DOI": "10.1234/test.2022.022"
+  },
+  {
+    "type": "article-journal",
+    "id": "item023",
+    "title": "Research paper number 23 on advanced topics",
+    "author": [
+      {
+        "family": "Garc\u00eda",
+        "given": "Mar\u00eda"
+      },
+      {
+        "family": "Patel",
+        "given": "Olga"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "PNAS",
+    "volume": "24",
+    "page": "231-245",
+    "DOI": "10.1234/test.2023.023"
+  },
+  {
+    "type": "article-journal",
+    "id": "item024",
+    "title": "Research paper number 24 on advanced topics",
+    "author": [
+      {
+        "family": "M\u00fcller",
+        "given": "Hans"
+      },
+      {
+        "family": "Kim",
+        "given": "Carlos"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Physical Review Letters",
+    "volume": "25",
+    "page": "241-255",
+    "DOI": "10.1234/test.2024.024"
+  },
+  {
+    "type": "article-journal",
+    "id": "item025",
+    "title": "Research paper number 25 on advanced topics",
+    "author": [
+      {
+        "family": "Tanaka",
+        "given": "Yuki"
+      },
+      {
+        "family": "Silva",
+        "given": "John"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Journal of Chemical Physics",
+    "volume": "26",
+    "page": "251-265",
+    "DOI": "10.1234/test.2020.025"
+  },
+  {
+    "type": "article-journal",
+    "id": "item026",
+    "title": "Research paper number 26 on advanced topics",
+    "author": [
+      {
+        "family": "Patel",
+        "given": "Priya"
+      },
+      {
+        "family": "Brown",
+        "given": "Jane"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Ecology",
+    "volume": "27",
+    "page": "261-275",
+    "DOI": "10.1234/test.2021.026"
+  },
+  {
+    "type": "article-journal",
+    "id": "item027",
+    "title": "Research paper number 27 on advanced topics",
+    "author": [
+      {
+        "family": "Kim",
+        "given": "Ahmed"
+      },
+      {
+        "family": "Smith",
+        "given": "Wei"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Lancet",
+    "volume": "28",
+    "page": "271-285",
+    "DOI": "10.1234/test.2022.027"
+  },
+  {
+    "type": "article-journal",
+    "id": "item028",
+    "title": "Research paper number 28 on advanced topics",
+    "author": [
+      {
+        "family": "Silva",
+        "given": "Olga"
+      },
+      {
+        "family": "Johnson",
+        "given": "Mar\u00eda"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "BMJ",
+    "volume": "29",
+    "page": "281-295",
+    "DOI": "10.1234/test.2023.028"
+  },
+  {
+    "type": "article-journal",
+    "id": "item029",
+    "title": "Research paper number 29 on advanced topics",
+    "author": [
+      {
+        "family": "Brown",
+        "given": "Carlos"
+      },
+      {
+        "family": "Chen",
+        "given": "Hans"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "JAMA",
+    "volume": "30",
+    "page": "291-305",
+    "DOI": "10.1234/test.2024.029"
+  },
+  {
+    "type": "article-journal",
+    "id": "item030",
+    "title": "Research paper number 30 on advanced topics",
+    "author": [
+      {
+        "family": "Smith",
+        "given": "John"
+      },
+      {
+        "family": "Garc\u00eda",
+        "given": "Yuki"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Nature",
+    "volume": "31",
+    "page": "301-315",
+    "DOI": "10.1234/test.2020.030"
+  },
+  {
+    "type": "article-journal",
+    "id": "item031",
+    "title": "Research paper number 31 on advanced topics",
+    "author": [
+      {
+        "family": "Johnson",
+        "given": "Jane"
+      },
+      {
+        "family": "M\u00fcller",
+        "given": "Priya"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Science",
+    "volume": "32",
+    "page": "311-325",
+    "DOI": "10.1234/test.2021.031"
+  },
+  {
+    "type": "article-journal",
+    "id": "item032",
+    "title": "Research paper number 32 on advanced topics",
+    "author": [
+      {
+        "family": "Chen",
+        "given": "Wei"
+      },
+      {
+        "family": "Tanaka",
+        "given": "Ahmed"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Cell",
+    "volume": "33",
+    "page": "321-335",
+    "DOI": "10.1234/test.2022.032"
+  },
+  {
+    "type": "article-journal",
+    "id": "item033",
+    "title": "Research paper number 33 on advanced topics",
+    "author": [
+      {
+        "family": "Garc\u00eda",
+        "given": "Mar\u00eda"
+      },
+      {
+        "family": "Patel",
+        "given": "Olga"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "PNAS",
+    "volume": "34",
+    "page": "331-345",
+    "DOI": "10.1234/test.2023.033"
+  },
+  {
+    "type": "article-journal",
+    "id": "item034",
+    "title": "Research paper number 34 on advanced topics",
+    "author": [
+      {
+        "family": "M\u00fcller",
+        "given": "Hans"
+      },
+      {
+        "family": "Kim",
+        "given": "Carlos"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Physical Review Letters",
+    "volume": "35",
+    "page": "341-355",
+    "DOI": "10.1234/test.2024.034"
+  },
+  {
+    "type": "article-journal",
+    "id": "item035",
+    "title": "Research paper number 35 on advanced topics",
+    "author": [
+      {
+        "family": "Tanaka",
+        "given": "Yuki"
+      },
+      {
+        "family": "Silva",
+        "given": "John"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Journal of Chemical Physics",
+    "volume": "36",
+    "page": "351-365",
+    "DOI": "10.1234/test.2020.035"
+  },
+  {
+    "type": "article-journal",
+    "id": "item036",
+    "title": "Research paper number 36 on advanced topics",
+    "author": [
+      {
+        "family": "Patel",
+        "given": "Priya"
+      },
+      {
+        "family": "Brown",
+        "given": "Jane"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Ecology",
+    "volume": "37",
+    "page": "361-375",
+    "DOI": "10.1234/test.2021.036"
+  },
+  {
+    "type": "article-journal",
+    "id": "item037",
+    "title": "Research paper number 37 on advanced topics",
+    "author": [
+      {
+        "family": "Kim",
+        "given": "Ahmed"
+      },
+      {
+        "family": "Smith",
+        "given": "Wei"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Lancet",
+    "volume": "38",
+    "page": "371-385",
+    "DOI": "10.1234/test.2022.037"
+  },
+  {
+    "type": "article-journal",
+    "id": "item038",
+    "title": "Research paper number 38 on advanced topics",
+    "author": [
+      {
+        "family": "Silva",
+        "given": "Olga"
+      },
+      {
+        "family": "Johnson",
+        "given": "Mar\u00eda"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "BMJ",
+    "volume": "39",
+    "page": "381-395",
+    "DOI": "10.1234/test.2023.038"
+  },
+  {
+    "type": "article-journal",
+    "id": "item039",
+    "title": "Research paper number 39 on advanced topics",
+    "author": [
+      {
+        "family": "Brown",
+        "given": "Carlos"
+      },
+      {
+        "family": "Chen",
+        "given": "Hans"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "JAMA",
+    "volume": "40",
+    "page": "391-405",
+    "DOI": "10.1234/test.2024.039"
+  },
+  {
+    "type": "article-journal",
+    "id": "item040",
+    "title": "Research paper number 40 on advanced topics",
+    "author": [
+      {
+        "family": "Smith",
+        "given": "John"
+      },
+      {
+        "family": "Garc\u00eda",
+        "given": "Yuki"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Nature",
+    "volume": "41",
+    "page": "401-415",
+    "DOI": "10.1234/test.2020.040"
+  },
+  {
+    "type": "article-journal",
+    "id": "item041",
+    "title": "Research paper number 41 on advanced topics",
+    "author": [
+      {
+        "family": "Johnson",
+        "given": "Jane"
+      },
+      {
+        "family": "M\u00fcller",
+        "given": "Priya"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Science",
+    "volume": "42",
+    "page": "411-425",
+    "DOI": "10.1234/test.2021.041"
+  },
+  {
+    "type": "article-journal",
+    "id": "item042",
+    "title": "Research paper number 42 on advanced topics",
+    "author": [
+      {
+        "family": "Chen",
+        "given": "Wei"
+      },
+      {
+        "family": "Tanaka",
+        "given": "Ahmed"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Cell",
+    "volume": "43",
+    "page": "421-435",
+    "DOI": "10.1234/test.2022.042"
+  },
+  {
+    "type": "article-journal",
+    "id": "item043",
+    "title": "Research paper number 43 on advanced topics",
+    "author": [
+      {
+        "family": "Garc\u00eda",
+        "given": "Mar\u00eda"
+      },
+      {
+        "family": "Patel",
+        "given": "Olga"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "PNAS",
+    "volume": "44",
+    "page": "431-445",
+    "DOI": "10.1234/test.2023.043"
+  },
+  {
+    "type": "article-journal",
+    "id": "item044",
+    "title": "Research paper number 44 on advanced topics",
+    "author": [
+      {
+        "family": "M\u00fcller",
+        "given": "Hans"
+      },
+      {
+        "family": "Kim",
+        "given": "Carlos"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "Physical Review Letters",
+    "volume": "45",
+    "page": "441-455",
+    "DOI": "10.1234/test.2024.044"
+  },
+  {
+    "type": "article-journal",
+    "id": "item045",
+    "title": "Research paper number 45 on advanced topics",
+    "author": [
+      {
+        "family": "Tanaka",
+        "given": "Yuki"
+      },
+      {
+        "family": "Silva",
+        "given": "John"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2020
+        ]
+      ]
+    },
+    "container-title": "Journal of Chemical Physics",
+    "volume": "46",
+    "page": "451-465",
+    "DOI": "10.1234/test.2020.045"
+  },
+  {
+    "type": "article-journal",
+    "id": "item046",
+    "title": "Research paper number 46 on advanced topics",
+    "author": [
+      {
+        "family": "Patel",
+        "given": "Priya"
+      },
+      {
+        "family": "Brown",
+        "given": "Jane"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "container-title": "Ecology",
+    "volume": "47",
+    "page": "461-475",
+    "DOI": "10.1234/test.2021.046"
+  },
+  {
+    "type": "article-journal",
+    "id": "item047",
+    "title": "Research paper number 47 on advanced topics",
+    "author": [
+      {
+        "family": "Kim",
+        "given": "Ahmed"
+      },
+      {
+        "family": "Smith",
+        "given": "Wei"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "Lancet",
+    "volume": "48",
+    "page": "471-485",
+    "DOI": "10.1234/test.2022.047"
+  },
+  {
+    "type": "article-journal",
+    "id": "item048",
+    "title": "Research paper number 48 on advanced topics",
+    "author": [
+      {
+        "family": "Silva",
+        "given": "Olga"
+      },
+      {
+        "family": "Johnson",
+        "given": "Mar\u00eda"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "BMJ",
+    "volume": "49",
+    "page": "481-495",
+    "DOI": "10.1234/test.2023.048"
+  },
+  {
+    "type": "article-journal",
+    "id": "item049",
+    "title": "Research paper number 49 on advanced topics",
+    "author": [
+      {
+        "family": "Brown",
+        "given": "Carlos"
+      },
+      {
+        "family": "Chen",
+        "given": "Hans"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "JAMA",
+    "volume": "50",
+    "page": "491-505",
+    "DOI": "10.1234/test.2024.049"
+  }
+]
