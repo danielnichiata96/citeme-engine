@@ -22,6 +22,9 @@ export declare class WasmCitationEngine {
   formatOne(cslJsonStr: string, styleName: string, localeCode: string, abntPostProcess: boolean): string;
   parseBibtex(input: string, maxEntries?: number): string;
   parseRis(input: string, maxEntries?: number): string;
+  parseCslJson(input: string, maxEntries?: number): string;
+  detectFormat(input: string): 'bibtex' | 'ris' | 'csl-json' | 'unknown';
+  parseAuto(input: string, maxEntries?: number): string;
   version(): string;
 }
 

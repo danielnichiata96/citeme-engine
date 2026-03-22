@@ -107,6 +107,39 @@ impl WasmCitationEngine {
         serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     }
 
+    /// Detect input format (returns "bibtex", "ris", "csl-json", or "unknown").
+    #[wasm_bindgen(js_name = "detectFormat")]
+    pub fn detect_format(&self, input: &str) -> String {
+        citeme_engine_core::parsers::detect::detect_format(input).as_str().to_string()
+    }
+
+    /// Auto-detect format and parse. Returns JSON string of ParseResult.
+    #[wasm_bindgen(js_name = "parseAuto")]
+    pub fn parse_auto(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
+        use citeme_engine_core::parsers::detect::InputFormat;
+        let format = citeme_engine_core::parsers::detect::detect_format(input);
+        let options = citeme_engine_core::parsers::ParseOptions {
+            max_entries,
+            ..Default::default()
+        };
+        let result = match format {
+            InputFormat::Bibtex => citeme_engine_core::parsers::bibtex::parse_bibtex(input, &options),
+            InputFormat::Ris => citeme_engine_core::parsers::ris::parse_ris(input, &options),
+            InputFormat::CslJson => citeme_engine_core::parsers::csl_json::parse_csl_json(input, &options),
+            InputFormat::Unknown => citeme_engine_core::parsers::ParseResult {
+                entries: vec![],
+                errors: vec![citeme_engine_core::parsers::ParseErrorInfo {
+                    preview: input.chars().take(80).collect(),
+                    error: "could not detect format".to_string(),
+                }],
+                format: "unknown".to_string(),
+                truncated: false,
+                scanned_entries: 0,
+            },
+        };
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+    }
+
     /// Validate and pass through CSL-JSON input. Accepts single object or array.
     #[wasm_bindgen(js_name = "parseCslJson")]
     pub fn parse_csl_json(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
