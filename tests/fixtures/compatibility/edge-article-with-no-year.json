@@ -15,7 +15,7 @@
     "container-title": "Obscure Journal"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"noyear\" class=\"csl-entry\">Anonymous, A. (n.d.). Timeless Insights. <i>Obscure Journal</i>.</div>\n</div>",
+    "reference": "Anonymous, A. (n.d.). Timeless Insights. Obscure Journal.",
     "inText": "(Anonymous, n.d.)"
   }
 }

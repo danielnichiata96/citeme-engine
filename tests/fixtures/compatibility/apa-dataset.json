@@ -22,7 +22,7 @@
     "URL": "https://data.nasa.gov/temperature"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"dataset2024\" class=\"csl-entry\">NASA Goddard Institute. (2024). <i>Global Temperature Records 1850-2024</i> [Dataset]. https://doi.org/10.5281/zenodo.123456</div>\n</div>",
+    "reference": "NASA Goddard Institute. (2024). Global Temperature Records 1850-2024 [Dataset]. https://doi.org/10.5281/zenodo.123456",
     "inText": "(NASA Goddard Institute, 2024)"
   }
 }

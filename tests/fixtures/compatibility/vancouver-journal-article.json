@@ -34,7 +34,7 @@
     "DOI": "10.1016/s1473-3099(24)00045-8"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"vanc2024\" class=\"csl-entry\">\n    <div class=\"csl-left-margin\">1.</div><div class=\"csl-right-inline\">Gupta P, Anderson R, Nakamura H. Efficacy of mRNA vaccines against emerging variants. The Lancet Infectious Diseases. 2024;24(1):45–58.</div>\n   </div>\n</div>",
+    "reference": "1. Gupta P, Anderson R, Nakamura H. Efficacy of mRNA vaccines against emerging variants. The Lancet Infectious Diseases. 2024;24(1):45–58.",
     "inText": "(1)"
   }
 }

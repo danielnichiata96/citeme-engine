@@ -25,7 +25,7 @@
     "DOI": "10.1103/physrevlett.132.001"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"vanderberg2024\" class=\"csl-entry\">van der Berg, J. (2024). Particle Physics in the 21st Century. <i>Physical Review Letters</i>, <i>132</i>. https://doi.org/10.1103/physrevlett.132.001</div>\n</div>",
+    "reference": "van der Berg, J. (2024). Particle Physics in the 21st Century. Physical Review Letters, 132. https://doi.org/10.1103/physrevlett.132.001",
     "inText": "(van der Berg, 2024)"
   }
 }

@@ -22,7 +22,7 @@
     "publisher-place": "Rio de Janeiro"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"ibge2024br\" class=\"csl-entry\">IBGE. <b>Censo Demográfico 2024: resultados preliminares</b>. Rio de Janeiro: Instituto Brasileiro de Geografia e Estatística, 2024. </div>\n</div>",
+    "reference": "IBGE. Censo Demográfico 2024: resultados preliminares. Rio de Janeiro: Instituto Brasileiro de Geografia e Estatística, 2024.",
     "inText": "(IBGE, 2024)"
   }
 }

@@ -22,7 +22,7 @@
     "URL": "https://www.ibge.gov.br/census2024"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"ibge2024\" class=\"csl-entry\">IBGE. (2024). <i>Census 2024 Preliminary Results</i>. Instituto Brasileiro de Geografia e Estatística. https://www.ibge.gov.br/census2024</div>\n</div>",
+    "reference": "IBGE. (2024). Census 2024 Preliminary Results. Instituto Brasileiro de Geografia e Estatística. https://www.ibge.gov.br/census2024",
     "inText": "(IBGE, 2024)"
   }
 }

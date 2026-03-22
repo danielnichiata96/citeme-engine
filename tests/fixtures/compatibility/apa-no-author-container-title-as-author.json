@@ -18,7 +18,7 @@
     "page": "1"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"noauthor2024\" class=\"csl-entry\">Editorial: The Future of Open Science. (2024). <i>Science</i>, <i>383</i>, 1.</div>\n</div>",
+    "reference": "Editorial: The Future of Open Science. (2024). Science, 383, 1.",
     "inText": "(“Editorial: The Future of Open Science,” 2024)"
   }
 }

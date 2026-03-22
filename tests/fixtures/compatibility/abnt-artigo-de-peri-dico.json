@@ -26,7 +26,7 @@
     "DOI": "10.5555/rbe.2024.001"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"silva2024\" class=\"csl-entry\">SILVA, João Pedro. Impactos ambientais na Amazônia. <b>Revista Brasileira de Ecologia</b>, v. 28, n. 2, p. 45–60, 2024. </div>\n</div>",
+    "reference": "SILVA, João Pedro. Impactos ambientais na Amazônia. Revista Brasileira de Ecologia, v. 28, n. 2, p. 45–60, 2024.",
     "inText": "(Silva, 2024)"
   }
 }

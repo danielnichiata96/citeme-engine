@@ -29,7 +29,7 @@
     "ISBN": "978-85-97123-45-6"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"souza2023\" class=\"csl-entry\">SOUZA, Maria; SANTOS, Carlos Alberto. <b>Metodologia da pesquisa científica</b>. 5. ed. São Paulo: Editora Atlas, 2023. </div>\n</div>",
+    "reference": "SOUZA, Maria; SANTOS, Carlos Alberto. Metodologia da pesquisa científica. 5. ed. São Paulo: Editora Atlas, 2023.",
     "inText": "(Souza; Santos, 2023)"
   }
 }

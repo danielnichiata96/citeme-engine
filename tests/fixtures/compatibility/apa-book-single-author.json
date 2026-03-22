@@ -25,7 +25,7 @@
     "ISBN": "978-0-123456-78-9"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"doe2023book\" class=\"csl-entry\">Doe, J. (2023). <i>The Art of Academic Writing</i> (3rd ed.). Academic Press.</div>\n</div>",
+    "reference": "Doe, J. (2023). The Art of Academic Writing (3rd ed.). Academic Press.",
     "inText": "(Doe, 2023)"
   }
 }

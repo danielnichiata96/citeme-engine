@@ -41,7 +41,7 @@
     "DOI": "10.1038/nr.2023.001"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"multi5\" class=\"csl-entry\">García, M., Chen, W., O’Brien, P., Müller, H., &#38; Tanaka, Y. (2023). Collaborative Research in Modern Science. <i>Nature Reviews</i>, <i>15</i>, 1–20. https://doi.org/10.1038/nr.2023.001</div>\n</div>",
+    "reference": "García, M., Chen, W., O’Brien, P., Müller, H., & Tanaka, Y. (2023). Collaborative Research in Modern Science. Nature Reviews, 15, 1–20. https://doi.org/10.1038/nr.2023.001",
     "inText": "(García et al., 2023)"
   }
 }

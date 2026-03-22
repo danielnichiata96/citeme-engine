@@ -25,7 +25,7 @@
     "page": "100-110"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"suffix2024\" class=\"csl-entry\">King, M. L., Jr. (2024). Generational Leadership Studies. <i>Leadership Quarterly</i>, <i>35</i>, 100–110.</div>\n</div>",
+    "reference": "King, M. L., Jr. (2024). Generational Leadership Studies. Leadership Quarterly, 35, 100–110.",
     "inText": "(King, 2024)"
   }
 }

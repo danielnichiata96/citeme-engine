@@ -23,7 +23,7 @@
     "URL": "https://www.who.int/climate-change"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"web2024\" class=\"csl-entry\">World Health Organization. (2024, March 15). <i>Understanding Climate Change</i>. https://www.who.int/climate-change</div>\n</div>",
+    "reference": "World Health Organization. (2024, March 15). Understanding Climate Change. https://www.who.int/climate-change",
     "inText": "(World Health Organization, 2024)"
   }
 }

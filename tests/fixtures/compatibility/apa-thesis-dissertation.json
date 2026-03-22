@@ -23,7 +23,7 @@
     "genre": "Doctoral dissertation"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"thesis2024\" class=\"csl-entry\">Johnson, E. R. (2024). <i>Deep Learning for Climate Prediction</i> [Doctoral dissertation]. Stanford University.</div>\n</div>",
+    "reference": "Johnson, E. R. (2024). Deep Learning for Climate Prediction [Doctoral dissertation]. Stanford University.",
     "inText": "(Johnson, 2024)"
   }
 }

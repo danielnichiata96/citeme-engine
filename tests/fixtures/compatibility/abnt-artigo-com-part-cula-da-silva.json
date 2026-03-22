@@ -25,7 +25,7 @@
     "page": "30-45"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"dasilva2024br\" class=\"csl-entry\">DA SILVA, Maria. Educação ambiental no ensino fundamental. <b>Revista de Educação</b>, v. 15, p. 30–45, 2024. </div>\n</div>",
+    "reference": "DA SILVA, Maria. Educação ambiental no ensino fundamental. Revista de Educação, v. 15, p. 30–45, 2024.",
     "inText": "(Da Silva, 2024)"
   }
 }

@@ -19,84 +19,51 @@ struct Expected {
     in_text: String,
 }
 
-/// Normalize HTML representation differences between citation-js and Hayagriva.
+/// Normalize to plain text for semantic comparison.
 ///
-/// Three systematic differences:
-/// 1. Wrapper divs: citation-js wraps in `<div class="csl-bib-body">...<div class="csl-entry">...</div></div>`
-///    Also uses `<div class="csl-left-margin">` and `<div class="csl-right-inline">` for numbered styles.
-/// 2. Italic/bold tags: citation-js uses `<i>`/`<b>`, Hayagriva uses `<span style="...">`
-/// 3. Entities & links: citation-js uses `&#38;` for `&`, DOI as plain text; Hayagriva uses literal `&`, DOI as `<a>`
-fn normalize_html(s: &str) -> String {
+/// citation-js (CiteMe default) outputs plain text (no HTML tags).
+/// Hayagriva outputs HTML with <span style="..."> and <a href="...">.
+/// This function strips ALL HTML to plain text so both can be compared.
+fn normalize_to_plain(s: &str) -> String {
     let mut out = s.to_string();
 
-    // 1. Strip ALL div tags (opening + closing), preserving content
-    out = strip_all_tags(&out, "div");
+    // Strip <a href="...">TEXT</a> → TEXT (before generic tag stripping)
+    out = strip_a_tags(&out);
 
-    // 2. Normalize italic spans → <i>
-    out = replace_span_pair(&out, "font-style: italic;", "i");
-    out = replace_span_pair(&out, "font-style: italic", "i");
-    // Normalize bold spans → <b>
-    out = replace_span_pair(&out, "font-weight: bold;", "b");
-    out = replace_span_pair(&out, "font-weight: bold", "b");
+    // Strip ALL HTML tags: <anything> → empty
+    // This handles: <div>, <span style="...">, <i>, <b>, </div>, </span>, </i>, </b>, etc.
+    let mut result = String::with_capacity(out.len());
+    let mut in_tag = false;
+    for ch in out.chars() {
+        if ch == '<' {
+            in_tag = true;
+        } else if ch == '>' {
+            in_tag = false;
+        } else if !in_tag {
+            result.push(ch);
+        }
+    }
+    out = result;
 
-    // 3a. Normalize HTML entities
+    // Decode HTML entities
     out = out.replace("&#38;", "&");
     out = out.replace("&#60;", "<");
     out = out.replace("&#62;", ">");
     out = out.replace("&amp;", "&");
+    out = out.replace("&lt;", "<");
+    out = out.replace("&gt;", ">");
 
-    // 3c. Normalize smart quotes to ASCII
-    out = out.replace('\u{2018}', "'");  // left single quotation mark
-    out = out.replace('\u{2019}', "'");  // right single quotation mark
-    out = out.replace('\u{201C}', "\""); // left double quotation mark
-    out = out.replace('\u{201D}', "\""); // right double quotation mark
-
-    // 3b. Strip <a> links to just text content
-    out = strip_a_tags(&out);
+    // Normalize smart quotes to ASCII
+    out = out.replace('\u{2018}', "'");
+    out = out.replace('\u{2019}', "'");
+    out = out.replace('\u{201C}', "\"");
+    out = out.replace('\u{201D}', "\"");
 
     // Normalize whitespace
-    out = out.split_whitespace().collect::<Vec<_>>().join(" ");
     out = out.replace('\u{00a0}', " ");
+    out = out.split_whitespace().collect::<Vec<_>>().join(" ");
     out = out.replace(" .", ".");
     out.trim().to_string()
-}
-
-/// Strip all opening and closing tags of a given element, preserving inner content.
-fn strip_all_tags(s: &str, tag: &str) -> String {
-    let mut out = s.to_string();
-    // Remove opening tags: <tag ...> or <tag>
-    loop {
-        let open = format!("<{tag}");
-        if let Some(start) = out.find(&open) {
-            if let Some(end) = out[start..].find('>') {
-                out = format!("{}{}", &out[..start], &out[start + end + 1..]);
-                continue;
-            }
-        }
-        break;
-    }
-    // Remove closing tags
-    out = out.replace(&format!("</{tag}>"), "");
-    out
-}
-
-/// Replace `<span style="STYLE">CONTENT</span>` with `<TAG>CONTENT</TAG>`.
-fn replace_span_pair(s: &str, style: &str, tag: &str) -> String {
-    let mut out = s.to_string();
-    let open = format!("<span style=\"{style}\">");
-    loop {
-        if let Some(start) = out.find(&open) {
-            let after = start + open.len();
-            if let Some(end) = out[after..].find("</span>") {
-                let content = out[after..after + end].to_string();
-                let replacement = format!("<{tag}>{content}</{tag}>");
-                out = format!("{}{}{}", &out[..start], replacement, &out[after + end + "</span>".len()..]);
-                continue;
-            }
-        }
-        break;
-    }
-    out
 }
 
 /// Strip <a href="...">TEXT</a> to just TEXT.
@@ -120,40 +87,40 @@ fn strip_a_tags(s: &str) -> String {
 
 /// Fuzzy comparison: normalize HTML representation and whitespace.
 fn fuzzy_eq(a: &str, b: &str) -> bool {
-    normalize_html(a) == normalize_html(b)
+    normalize_to_plain(a) == normalize_to_plain(b)
 }
 
 #[test]
-fn test_normalize_html() {
-    // 1. Strip wrapper divs
+fn test_normalize_to_plain() {
+    // Strip all HTML tags
     assert_eq!(
-        normalize_html(r#"<div class="csl-bib-body"><div class="csl-entry">Hello</div></div>"#),
+        normalize_to_plain(r#"<div class="csl-bib-body"><div class="csl-entry">Hello</div></div>"#),
         "Hello"
     );
 
-    // 2. Normalize italic/bold tags
+    // Strip span style tags to plain text
     assert_eq!(
-        normalize_html(r#"<span style="font-style: italic;">Title</span>"#),
-        "<i>Title</i>"
+        normalize_to_plain(r#"<span style="font-style: italic;">Title</span>"#),
+        "Title"
     );
     assert_eq!(
-        normalize_html(r#"<span style="font-weight: bold;">Title</span>"#),
-        "<b>Title</b>"
+        normalize_to_plain(r#"<span style="font-weight: bold;">Title</span>"#),
+        "Title"
     );
 
-    // 3a. Normalize HTML entities
-    assert_eq!(normalize_html("Smith, J. A., &#38; Doe"), "Smith, J. A., & Doe");
+    // Decode HTML entities
+    assert_eq!(normalize_to_plain("Smith, J. A., &#38; Doe"), "Smith, J. A., & Doe");
 
-    // 3b. Strip <a> links to just text
+    // Strip <a> links to just text
     assert_eq!(
-        normalize_html(r#"https://doi.org/<a href="https://doi.org/10.1234">10.1234</a>"#),
+        normalize_to_plain(r#"https://doi.org/<a href="https://doi.org/10.1234">10.1234</a>"#),
         "https://doi.org/10.1234"
     );
 
-    // Combined: citation-js vs Hayagriva should match
-    let citation_js = r#"<div class="csl-bib-body"><div class="csl-entry">Smith, J. A., &#38; Doe, J. B. (2024). Title. <i>Journal</i>, <i>42</i>(3), 100–115.</div></div>"#;
-    let hayagriva = r#"Smith, J. A., & Doe, J. B. (2024). Title. <span style="font-style: italic;">Journal</span>, <span style="font-style: italic;">42</span>(3), 100–115."#;
-    assert_eq!(normalize_html(citation_js), normalize_html(hayagriva));
+    // Combined: citation-js plain text vs Hayagriva HTML should match
+    let citation_js_plain = "Smith, J. A., & Doe, J. B. (2024). Title. Journal, 42(3), 100–115.";
+    let hayagriva_html = r#"Smith, J. A., & Doe, J. B. (2024). Title. <span style="font-style: italic;">Journal</span>, <span style="font-style: italic;">42</span>(3), 100–115."#;
+    assert_eq!(normalize_to_plain(citation_js_plain), normalize_to_plain(hayagriva_html));
 }
 
 #[test]

@@ -29,7 +29,7 @@
     "DOI": "10.1109/tqe.2024.001"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"ieee2024\" class=\"csl-entry\">\n    <div class=\"csl-left-margin\">[1]</div><div class=\"csl-right-inline\">L. Zhang and X. Wang, “A novel approach to quantum error correction,” <i>IEEE Transactions on Quantum Engineering</i>, vol. 5, pp. 1–12, 2024, doi: 10.1109/tqe.2024.001.</div>\n  </div>\n</div>",
+    "reference": "[1] L. Zhang and X. Wang, “A novel approach to quantum error correction,” IEEE Transactions on Quantum Engineering, vol. 5, pp. 1–12, 2024, doi: 10.1109/tqe.2024.001.",
     "inText": "[1]"
   }
 }

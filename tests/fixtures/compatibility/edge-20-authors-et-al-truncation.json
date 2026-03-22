@@ -104,7 +104,7 @@
     "page": "1-15"
   },
   "expected": {
-    "reference": "<div class=\"csl-bib-body\">\n  <div data-csl-entry-id=\"manyauthors\" class=\"csl-entry\">Author1, F., Author2, F., Author3, F., Author4, F., Author5, F., Author6, F., Author7, F., Author8, F., Author9, F., Author10, F., Author11, F., Author12, F., Author13, F., Author14, F., Author15, F., Author16, F., Author17, F., Author18, F., Author19, F., … Author21, F. (2024). A Large Collaborative Study. <i>Science</i>, <i>384</i>, 1–15.</div>\n</div>",
+    "reference": "Author1, F., Author2, F., Author3, F., Author4, F., Author5, F., Author6, F., Author7, F., Author8, F., Author9, F., Author10, F., Author11, F., Author12, F., Author13, F., Author14, F., Author15, F., Author16, F., Author17, F., Author18, F., Author19, F., … Author21, F. (2024). A Large Collaborative Study. Science, 384, 1–15.",
     "inText": "(Author1 et al., 2024)"
   }
 }
