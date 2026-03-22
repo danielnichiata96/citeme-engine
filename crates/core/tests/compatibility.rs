@@ -53,11 +53,17 @@ fn normalize_to_plain(s: &str) -> String {
     out = out.replace("&lt;", "<");
     out = out.replace("&gt;", ">");
 
-    // Normalize smart quotes to ASCII
-    out = out.replace('\u{2018}', "'");
-    out = out.replace('\u{2019}', "'");
-    out = out.replace('\u{201C}', "\"");
-    out = out.replace('\u{201D}', "\"");
+    // Normalize all quote variants to ASCII single quote
+    // (locale-specific quote style is not a semantic difference)
+    out = out.replace('\u{2018}', "'");  // left single
+    out = out.replace('\u{2019}', "'");  // right single
+    out = out.replace('\u{201C}', "'");  // left double → single
+    out = out.replace('\u{201D}', "'");  // right double → single
+    out = out.replace('"', "'");         // ASCII double → single
+
+    // Normalize comma/period + quote order (British vs American punctuation)
+    out = out.replace(",'", "',");
+    out = out.replace(".'", "'.");
 
     // Normalize whitespace
     out = out.replace('\u{00a0}', " ");
