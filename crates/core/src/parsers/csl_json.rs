@@ -83,12 +83,13 @@ pub fn parse_csl_json(input: &str, options: &ParseOptions) -> ParseResult {
         }
 
         // Validate by attempting to deserialize as citationberg::json::Item
-        let item_str = serde_json::to_string(&item).unwrap_or_default();
-        match serde_json::from_str::<hayagriva::citationberg::json::Item>(&item_str) {
+        match serde_json::from_value::<hayagriva::citationberg::json::Item>(item.clone()) {
             Ok(_) => entries.push(item),
             Err(e) => {
+                let preview = serde_json::to_string(&item)
+                    .unwrap_or_else(|_| format!("{item:?}"));
                 errors.push(ParseErrorInfo {
-                    preview: item_str.chars().take(80).collect(),
+                    preview: preview.chars().take(80).collect(),
                     error: format!("invalid CSL-JSON item: {e}"),
                 });
             }

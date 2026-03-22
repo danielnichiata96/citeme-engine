@@ -72,7 +72,7 @@ pub fn detect_format(input: &str) -> InputFormat {
     // RIS: TY  - at line start
     for line in trimmed.lines() {
         let line = line.trim();
-        if line.starts_with("TY  -") || line.starts_with("TY  - ") {
+        if line.starts_with("TY  -") {
             return InputFormat::Ris;
         }
     }
