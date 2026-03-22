@@ -57,8 +57,11 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
     let csl_type = item["type"].as_str().unwrap_or("article-journal");
     let hay_type = csl_type_to_hayagriva(csl_type);
 
-    let key = item["id"].as_str()
-        .unwrap_or("entry");
+    let raw_key = item["id"].as_str().unwrap_or("entry");
+    // Sanitize key: replace non-alphanumeric chars (except - and _) with _
+    let key: String = raw_key.chars().map(|c| {
+        if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' }
+    }).collect();
 
     let mut lines: Vec<String> = Vec::new();
 
@@ -122,10 +125,10 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
     }
 
     // Biblio fields
-    if let Some(v) = item["volume"].as_str() { lines.push(format!("  volume: {v}")); }
-    if let Some(v) = item["issue"].as_str() { lines.push(format!("  issue: {v}")); }
-    if let Some(v) = item["page"].as_str() { lines.push(format!("  page-range: {v}")); }
-    if let Some(v) = item["edition"].as_str() { lines.push(format!("  edition: {v}")); }
+    if let Some(v) = item["volume"].as_str() { lines.push(format!("  volume: {}", yaml_str(v))); }
+    if let Some(v) = item["issue"].as_str() { lines.push(format!("  issue: {}", yaml_str(v))); }
+    if let Some(v) = item["page"].as_str() { lines.push(format!("  page-range: {}", yaml_str(v))); }
+    if let Some(v) = item["edition"].as_str() { lines.push(format!("  edition: {}", yaml_str(v))); }
 
     // Publisher
     if let Some(pub_name) = item["publisher"].as_str() {
@@ -155,10 +158,12 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
 
 /// Convert multiple CSL-JSON items to a Hayagriva YAML file string.
 pub fn csl_json_array_to_hayagriva(items: &[Value]) -> String {
-    items.iter()
+    let mut out = items.iter()
         .map(|item| csl_json_to_hayagriva(item))
         .collect::<Vec<_>>()
-        .join("\n\n")
+        .join("\n\n");
+    out.push('\n');
+    out
 }
 
 #[cfg(test)]

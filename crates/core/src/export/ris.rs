@@ -54,21 +54,19 @@ pub fn csl_json_to_ris(item: &Value) -> String {
         lines.push(format!("{tag}  - {v}"));
     }
 
-    // Date
+    // Date — RIS spec: PY for year, DA for full date (YYYY/MM/DD/ format)
     if let Some(dp) = item["issued"]["date-parts"].as_array() {
         if let Some(parts) = dp.first().and_then(|p| p.as_array()) {
             let year = parts.first().and_then(|y| y.as_i64()).unwrap_or(0);
             if year > 0 {
+                lines.push(format!("PY  - {year}///"));
                 let month = parts.get(1).and_then(|m| m.as_i64());
                 let day = parts.get(2).and_then(|d| d.as_i64());
-                let mut date = format!("{year}");
-                if let Some(m) = month {
-                    date.push_str(&format!("/{m:02}"));
-                    if let Some(d) = day {
-                        date.push_str(&format!("/{d:02}"));
-                    }
+                if month.is_some() {
+                    let m = month.unwrap();
+                    let d_str = day.map(|d| format!("{d:02}")).unwrap_or_default();
+                    lines.push(format!("DA  - {year}/{m:02}/{d_str}/"));
                 }
-                lines.push(format!("PY  - {date}"));
             }
         }
     }
@@ -119,10 +117,12 @@ pub fn csl_json_to_ris(item: &Value) -> String {
 
 /// Convert multiple CSL-JSON items to a RIS file string.
 pub fn csl_json_array_to_ris(items: &[Value]) -> String {
-    items.iter()
+    let mut out = items.iter()
         .map(|item| csl_json_to_ris(item))
         .collect::<Vec<_>>()
-        .join("\n\n")
+        .join("\n\n");
+    out.push('\n');
+    out
 }
 
 #[cfg(test)]
