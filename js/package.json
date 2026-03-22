@@ -1,5 +1,10 @@
 {
-  "name": "@citeme/citation-engine-wasm",
+  "name": "citeme-engine-wasm",
+  "author": "danielnichiata",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielnichiata96/citeme-engine"
+  },
   "version": "0.1.0",
   "description": "High-performance citation formatting engine powered by Rust/Wasm",
   "type": "module",
