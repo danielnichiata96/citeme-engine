@@ -1,0 +1,59 @@
+PMID- 12345678
+OWN - NLM
+STAT- MEDLINE
+DCOM- 20240115
+LR  - 20240115
+IS  - 1234-5678 (Electronic)
+IS  - 0987-6543 (Linking)
+VI  - 42
+IP  - 3
+DP  - 2024 Mar
+TI  - A Study of Something Important in Modern Medicine
+PG  - 100-115
+LID - 10.1234/test.2024 [doi]
+AB  - This is the abstract of the article. It describes the study methods and results.
+FAU - Smith, John A
+AU  - Smith JA
+AD  - Department of Testing, University of Science, New York, NY, USA.
+FAU - Doe, Jane B
+AU  - Doe JB
+AD  - Institute of Research, MIT, Cambridge, MA, USA.
+LA  - eng
+PT  - Journal Article
+PT  - Research Support, Non-U.S. Gov't
+PL  - United States
+TA  - J Test
+JT  - Journal of Testing
+JID - 9876543
+SB  - IM
+MH  - Humans
+MH  - Testing/methods
+OT  - keyword one
+OT  - keyword two
+EDAT- 2024/01/15 06:00
+MHDA- 2024/03/01 06:00
+CRDT- 2024/01/10 12:00
+PHST- 2024/01/10 12:00 [entrez]
+PHST- 2024/01/15 06:00 [pubmed]
+AID - 10.1234/test.2024 [doi]
+PST - ppublish
+SO  - J Test. 2024 Mar;42(3):100-115. doi: 10.1234/test.2024.
+
+PMID- 87654321
+OWN - NLM
+STAT- MEDLINE
+TI  - Advances in Quantum Computing: A Review
+PG  - 200-250
+FAU - Chen, Wei
+AU  - Chen W
+DP  - 2023
+TA  - Nat Rev
+JT  - Nature Reviews
+VI  - 15
+LID - 10.1038/nr.2023.001 [doi]
+LA  - eng
+PT  - Review
+EDAT- 2023/06/01 06:00
+AID - 10.1038/nr.2023.001 [doi]
+PST - ppublish
+SO  - Nat Rev. 2023;15:200-250. doi: 10.1038/nr.2023.001.

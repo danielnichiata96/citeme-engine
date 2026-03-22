@@ -23,7 +23,8 @@ export declare class WasmCitationEngine {
   parseBibtex(input: string, maxEntries?: number): string;
   parseRis(input: string, maxEntries?: number): string;
   parseCslJson(input: string, maxEntries?: number): string;
-  detectFormat(input: string): 'bibtex' | 'ris' | 'csl-json' | 'unknown';
+  parseMedline(input: string, maxEntries?: number): string;
+  detectFormat(input: string): 'bibtex' | 'ris' | 'csl-json' | 'medline' | 'unknown';
   parseAuto(input: string, maxEntries?: number): string;
   version(): string;
 }

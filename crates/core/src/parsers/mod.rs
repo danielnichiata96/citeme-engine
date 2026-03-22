@@ -1,6 +1,7 @@
 pub mod bibtex;
 pub mod csl_json;
 pub mod detect;
+pub mod medline;
 pub mod ris;
 
 use serde::{Deserialize, Serialize};

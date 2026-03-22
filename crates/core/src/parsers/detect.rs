@@ -10,6 +10,8 @@ pub enum InputFormat {
     Ris,
     /// CSL-JSON (single object or array)
     CslJson,
+    /// MEDLINE/NBIB (PubMed export)
+    Medline,
     /// Unknown format
     Unknown,
 }
@@ -20,6 +22,7 @@ impl InputFormat {
             InputFormat::Bibtex => "bibtex",
             InputFormat::Ris => "ris",
             InputFormat::CslJson => "csl-json",
+            InputFormat::Medline => "medline",
             InputFormat::Unknown => "unknown",
         }
     }
@@ -77,6 +80,16 @@ pub fn detect_format(input: &str) -> InputFormat {
         }
     }
 
+    // MEDLINE/NBIB: PMID- at line start, or FAU - / TI  - pattern
+    for line in trimmed.lines() {
+        let line = line.trim();
+        if line.starts_with("PMID-") || line.starts_with("FAU -") || line.starts_with("AU  -") {
+            // Distinguish from RIS: MEDLINE uses "PMID-" and "FAU -", RIS uses "TY  -"
+            // If we got here, TY was not found, so it's MEDLINE not RIS
+            return InputFormat::Medline;
+        }
+    }
+
     InputFormat::Unknown
 }
 
@@ -117,6 +130,18 @@ mod tests {
     fn test_detect_empty() {
         assert_eq!(detect_format(""), InputFormat::Unknown);
         assert_eq!(detect_format("   "), InputFormat::Unknown);
+    }
+
+    #[test]
+    fn test_detect_medline() {
+        assert_eq!(
+            detect_format("PMID- 12345678\nTI  - A Study\nFAU - Smith, John\n"),
+            InputFormat::Medline
+        );
+        assert_eq!(
+            detect_format("FAU - Smith, John\nTI  - Test\n"),
+            InputFormat::Medline
+        );
     }
 
     #[test]

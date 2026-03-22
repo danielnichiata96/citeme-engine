@@ -126,6 +126,7 @@ impl WasmCitationEngine {
             InputFormat::Bibtex => citeme_engine_core::parsers::bibtex::parse_bibtex(input, &options),
             InputFormat::Ris => citeme_engine_core::parsers::ris::parse_ris(input, &options),
             InputFormat::CslJson => citeme_engine_core::parsers::csl_json::parse_csl_json(input, &options),
+            InputFormat::Medline => citeme_engine_core::parsers::medline::parse_medline(input, &options),
             InputFormat::Unknown => citeme_engine_core::parsers::ParseResult {
                 entries: vec![],
                 errors: vec![citeme_engine_core::parsers::ParseErrorInfo {
@@ -148,6 +149,17 @@ impl WasmCitationEngine {
             ..Default::default()
         };
         let result = citeme_engine_core::parsers::csl_json::parse_csl_json(input, &options);
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Parse MEDLINE/NBIB content and return CSL-JSON array.
+    #[wasm_bindgen(js_name = "parseMedline")]
+    pub fn parse_medline(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
+        let options = citeme_engine_core::parsers::ParseOptions {
+            max_entries,
+            ..Default::default()
+        };
+        let result = citeme_engine_core::parsers::medline::parse_medline(input, &options);
         serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     }
 
