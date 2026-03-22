@@ -27,6 +27,6 @@
   },
   "expected": {
     "reference": "SILVA, João Pedro. Impactos ambientais na Amazônia. Revista Brasileira de Ecologia, v. 28, n. 2, p. 45–60, 2024.",
-    "inText": "(Silva, 2024)"
+    "inText": "(SILVA, 2024)"
   }
 }

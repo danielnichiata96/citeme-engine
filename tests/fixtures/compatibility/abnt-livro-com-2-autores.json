@@ -30,6 +30,6 @@
   },
   "expected": {
     "reference": "SOUZA, Maria; SANTOS, Carlos Alberto. Metodologia da pesquisa científica. 5. ed. São Paulo: Editora Atlas, 2023.",
-    "inText": "(Souza; Santos, 2023)"
+    "inText": "(SOUZA; SANTOS, 2023)"
   }
 }
