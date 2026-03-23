@@ -54,6 +54,7 @@ impl WasmCitationEngine {
         let options = FormatOptions {
             output_format: OutputFormat::Html,
             abnt_post_process,
+            prose: false,
         };
 
         let results = self.inner.format_batch(csl_json_str, style_name, locale_code, &options)
@@ -76,12 +77,59 @@ impl WasmCitationEngine {
         let options = FormatOptions {
             output_format: OutputFormat::Html,
             abnt_post_process,
+            prose: false,
         };
 
         let result = self.inner.format_one(csl_json_str, style_name, locale_code, &options)
             .map_err(|e| JsError::new(&e.to_string()))?;
 
         serde_json::to_string(&result)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Format a single CSL-JSON item as a narrative/prose citation ("Smith (2024)").
+    /// Input: JSON string of one CSL-JSON item. Output: JSON string of FormatResult.
+    #[wasm_bindgen(js_name = "formatOneProse")]
+    pub fn format_one_prose(
+        &self,
+        csl_json_str: &str,
+        style_name: &str,
+        locale_code: &str,
+        abnt_post_process: bool,
+    ) -> Result<String, JsError> {
+        let options = FormatOptions {
+            output_format: OutputFormat::Html,
+            abnt_post_process,
+            prose: true,
+        };
+
+        let result = self.inner.format_one(csl_json_str, style_name, locale_code, &options)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&result)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Format a batch of CSL-JSON items as narrative/prose citations ("Smith (2024)").
+    /// Input: JSON string of CSL-JSON array. Output: JSON string of FormatResult array.
+    #[wasm_bindgen(js_name = "formatBatchProse")]
+    pub fn format_batch_prose(
+        &self,
+        csl_json_str: &str,
+        style_name: &str,
+        locale_code: &str,
+        abnt_post_process: bool,
+    ) -> Result<String, JsError> {
+        let options = FormatOptions {
+            output_format: OutputFormat::Html,
+            abnt_post_process,
+            prose: true,
+        };
+
+        let results = self.inner.format_batch(csl_json_str, style_name, locale_code, &options)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&results)
             .map_err(|e| JsError::new(&e.to_string()))
     }
 

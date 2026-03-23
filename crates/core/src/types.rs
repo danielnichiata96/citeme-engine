@@ -18,6 +18,8 @@ pub struct FormatOptions {
     pub output_format: OutputFormat,
     /// Apply ABNT 2023 post-processing
     pub abnt_post_process: bool,
+    /// Use prose/narrative citation form ("Smith (2024)" instead of "(Smith, 2024)")
+    pub prose: bool,
 }
 
 impl Default for FormatOptions {
@@ -25,6 +27,7 @@ impl Default for FormatOptions {
         Self {
             output_format: OutputFormat::Html,
             abnt_post_process: false,
+            prose: false,
         }
     }
 }

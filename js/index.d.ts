@@ -20,6 +20,8 @@ export declare class WasmCitationEngine {
   hasStyle(name: string): boolean;
   formatBatch(cslJsonStr: string, styleName: string, localeCode: string, abntPostProcess: boolean): string;
   formatOne(cslJsonStr: string, styleName: string, localeCode: string, abntPostProcess: boolean): string;
+  formatBatchProse(cslJsonStr: string, styleName: string, localeCode: string, abntPostProcess: boolean): string;
+  formatOneProse(cslJsonStr: string, styleName: string, localeCode: string, abntPostProcess: boolean): string;
   parseBibtex(input: string, maxEntries?: number): string;
   parseRis(input: string, maxEntries?: number): string;
   parseCslJson(input: string, maxEntries?: number): string;

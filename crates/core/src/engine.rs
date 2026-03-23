@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use hayagriva::citationberg::{IndependentStyle, LocaleFile, Locale, Style};
-use hayagriva::{BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest};
+use hayagriva::{BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest, CitePurpose};
 
 use crate::error::EngineError;
 use crate::types::{FormatOptions, FormatResult, OutputFormat};
@@ -110,7 +110,11 @@ impl CitationEngine {
         // Create driver and format
         let mut driver = BibliographyDriver::new();
 
-        let cite_items = vec![CitationItem::with_entry(&item)];
+        let mut cite_item = CitationItem::with_entry(&item);
+        if options.prose {
+            cite_item = cite_item.kind(CitePurpose::Prose);
+        }
+        let cite_items = vec![cite_item];
         driver.citation(CitationRequest::new(
             cite_items,
             style,
@@ -204,7 +208,11 @@ impl CitationEngine {
         let mut driver = BibliographyDriver::new();
 
         for item in &parsed_items {
-            let cite_items = vec![CitationItem::with_entry(item)];
+            let mut cite_item = CitationItem::with_entry(item);
+            if options.prose {
+                cite_item = cite_item.kind(CitePurpose::Prose);
+            }
+            let cite_items = vec![cite_item];
             driver.citation(CitationRequest::new(
                 cite_items,
                 style,
@@ -510,5 +518,84 @@ mod tests {
         assert!(!results[1].reference.is_empty(), "second item reference should not be empty: {:?}", results[1]);
         assert!(results[0].reference.contains("Smith"), "first reference should contain Smith: {}", results[0].reference);
         assert!(results[1].reference.contains("Doe"), "second reference should contain Doe: {}", results[1].reference);
+    }
+
+    #[test]
+    fn test_format_one_prose_citation() {
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let csl_json = r#"{
+            "type": "article-journal",
+            "id": "smith2024",
+            "title": "A Study of Something",
+            "author": [{"family": "Smith", "given": "John"}],
+            "issued": {"date-parts": [[2024]]},
+            "container-title": "Journal of Testing",
+            "volume": "42"
+        }"#;
+
+        let prose_opts = FormatOptions {
+            prose: true,
+            ..Default::default()
+        };
+        let result = engine.format_one(csl_json, "apa", "en-US", &prose_opts).unwrap();
+
+        // Prose citation: "Smith (2024)" — author outside parens, year inside
+        assert!(!result.in_text.is_empty(), "prose in_text must not be empty");
+        assert!(result.in_text.contains("Smith"), "prose in_text should contain author: {}", result.in_text);
+        assert!(result.in_text.contains("2024"), "prose in_text should contain year: {}", result.in_text);
+        // Positive: prose form starts with bare author name
+        let stripped = result.in_text.replace("<span", "").replace("</span>", "");
+        assert!(!stripped.trim_start().starts_with('('),
+            "prose in_text should start with bare author, not '(' — got: {}", result.in_text);
+    }
+
+    #[test]
+    fn test_format_batch_prose_citation() {
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let csl_json_array = r#"[
+            {
+                "type": "article-journal",
+                "id": "smith2024",
+                "title": "First Paper",
+                "author": [{"family": "Smith", "given": "John"}],
+                "issued": {"date-parts": [[2024]]}
+            },
+            {
+                "type": "book",
+                "id": "doe2023",
+                "title": "A Great Book",
+                "author": [{"family": "Doe", "given": "Jane"}],
+                "issued": {"date-parts": [[2023]]}
+            }
+        ]"#;
+
+        let prose_opts = FormatOptions {
+            prose: true,
+            ..Default::default()
+        };
+        let results = engine.format_batch(csl_json_array, "apa", "en-US", &prose_opts).unwrap();
+
+        assert_eq!(results.len(), 2);
+        // Both must be non-empty
+        assert!(!results[0].in_text.is_empty(), "first prose citation must not be empty");
+        assert!(!results[1].in_text.is_empty(), "second prose citation must not be empty");
+        // Positive: contains author names
+        assert!(results[0].in_text.contains("Smith"),
+            "first prose citation should contain Smith: {}", results[0].in_text);
+        assert!(results[1].in_text.contains("Doe"),
+            "second prose citation should contain Doe: {}", results[1].in_text);
+        // Negative: should not be parenthetical form
+        let s0 = results[0].in_text.replace("<span", "").replace("</span>", "");
+        let s1 = results[1].in_text.replace("<span", "").replace("</span>", "");
+        assert!(!s0.trim_start().starts_with('('),
+            "first prose citation should not be parenthetical: {}", results[0].in_text);
+        assert!(!s1.trim_start().starts_with('('),
+            "second prose citation should not be parenthetical: {}", results[1].in_text);
     }
 }
