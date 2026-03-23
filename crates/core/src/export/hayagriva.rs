@@ -44,6 +44,7 @@ fn yaml_str(s: &str) -> String {
     if s.contains(':') || s.contains('#') || s.contains('"') || s.contains('\'')
         || s.contains('\n') || s.starts_with('{') || s.starts_with('[')
         || s.starts_with(' ') || s.ends_with(' ')
+        || s.parse::<f64>().is_ok()
     {
         // Use double quotes with escaped internal quotes
         format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
@@ -139,11 +140,26 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
         }
     }
 
-    // Identifiers
-    if let Some(v) = item["DOI"].as_str() { lines.push(format!("  doi: {}", yaml_str(v))); }
+    // Serial-number (identifiers nested under serial-number:)
+    let mut serial_fields: Vec<String> = Vec::new();
+    if let Some(v) = item["DOI"].as_str() { serial_fields.push(format!("    doi: {}", yaml_str(v))); }
+    if let Some(v) = item["ISBN"].as_str() { serial_fields.push(format!("    isbn: {}", yaml_str(v))); }
+    if let Some(v) = item["ISSN"].as_str() { serial_fields.push(format!("    issn: {}", yaml_str(v))); }
+    if let Some(v) = item["PMID"].as_str() { serial_fields.push(format!("    pmid: {}", yaml_str(v))); }
+    if let Some(v) = item["PMCID"].as_str() { serial_fields.push(format!("    pmcid: {}", yaml_str(v))); }
+    if !serial_fields.is_empty() {
+        lines.push("  serial-number:".to_string());
+        lines.extend(serial_fields);
+    }
+
+    // URL (separate from serial-number)
     if let Some(v) = item["URL"].as_str() { lines.push(format!("  url: {}", yaml_str(v))); }
-    if let Some(v) = item["ISBN"].as_str() { lines.push(format!("  isbn: {}", yaml_str(v))); }
-    if let Some(v) = item["ISSN"].as_str() { lines.push(format!("  issn: {}", yaml_str(v))); }
+
+    // Genre
+    if let Some(v) = item["genre"].as_str() { lines.push(format!("  genre: {}", yaml_str(v))); }
+
+    // Chapter
+    if let Some(v) = item["chapter-number"].as_str() { lines.push(format!("  chapter: {}", yaml_str(v))); }
 
     // Language
     if let Some(v) = item["language"].as_str() { lines.push(format!("  language: {v}")); }
@@ -193,8 +209,8 @@ mod tests {
         assert!(yaml.contains("date: 2024-03-15"), "should have full date: {yaml}");
         assert!(yaml.contains("title: Journal of Testing"), "should have parent: {yaml}");
         assert!(yaml.contains("type: Periodical"), "parent should be Periodical: {yaml}");
-        assert!(yaml.contains("volume: 42"), "should have volume: {yaml}");
-        assert!(yaml.contains("doi: 10.1234/test"), "should have doi: {yaml}");
+        assert!(yaml.contains("volume: \"42\""), "should have volume: {yaml}");
+        assert!(yaml.contains("    doi: 10.1234/test"), "should have doi under serial-number: {yaml}");
     }
 
     #[test]
@@ -229,5 +245,63 @@ mod tests {
         let yaml = csl_json_to_hayagriva(&item);
         assert!(yaml.contains("\"Title with: colon and \\\"quotes\\\"\""),
             "special chars should be escaped: {yaml}");
+    }
+
+    #[test]
+    fn test_export_hayagriva_serial_number() {
+        let item = json!({
+            "type": "article-journal",
+            "id": "smith2024",
+            "title": "A Study",
+            "author": [{"family": "Smith", "given": "John"}],
+            "issued": {"date-parts": [[2024]]},
+            "DOI": "10.1234/test",
+            "ISBN": "978-0747551003",
+            "ISSN": "2412-3129",
+            "PMID": "12345678",
+            "PMCID": "PMC9876543"
+        });
+
+        let yaml = csl_json_to_hayagriva(&item);
+        // Identifiers MUST be nested under serial-number:
+        assert!(yaml.contains("  serial-number:"), "should have serial-number block: {yaml}");
+        assert!(yaml.contains("    doi: 10.1234/test"), "doi nested under serial-number: {yaml}");
+        assert!(yaml.contains("    isbn: 978-0747551003"), "isbn nested under serial-number: {yaml}");
+        assert!(yaml.contains("    issn: 2412-3129"), "issn nested under serial-number: {yaml}");
+        assert!(yaml.contains("    pmid: \"12345678\""), "pmid should be quoted (numeric): {yaml}");
+        assert!(yaml.contains("    pmcid: PMC9876543"), "pmcid nested under serial-number: {yaml}");
+        // Must NOT have flat doi/isbn/issn fields at root level
+        assert!(!yaml.contains("\n  doi:"), "doi must not be flat: {yaml}");
+        assert!(!yaml.contains("\n  isbn:"), "isbn must not be flat: {yaml}");
+        assert!(!yaml.contains("\n  issn:"), "issn must not be flat: {yaml}");
+    }
+
+    #[test]
+    fn test_export_hayagriva_genre_and_chapter() {
+        let item = json!({
+            "type": "thesis",
+            "id": "lee2024",
+            "title": "My Dissertation",
+            "author": [{"family": "Lee", "given": "Alice"}],
+            "issued": {"date-parts": [[2024]]},
+            "genre": "Doctoral dissertation",
+            "chapter-number": "3"
+        });
+
+        let yaml = csl_json_to_hayagriva(&item);
+        assert!(yaml.contains("  genre: Doctoral dissertation"), "should have genre: {yaml}");
+        assert!(yaml.contains("  chapter: \"3\""), "should have chapter (quoted numeric): {yaml}");
+    }
+
+    #[test]
+    fn test_yaml_str_quotes_numeric_strings() {
+        // Pure numeric strings must be quoted to prevent YAML interpreting as int/float
+        assert_eq!(yaml_str("12345678"), "\"12345678\"");
+        assert_eq!(yaml_str("3.14"), "\"3.14\"");
+        assert_eq!(yaml_str("0"), "\"0\"");
+        // Non-numeric strings should remain unquoted
+        assert_eq!(yaml_str("PMC9876543"), "PMC9876543");
+        assert_eq!(yaml_str("10.1234/test"), "10.1234/test");
+        assert_eq!(yaml_str("978-0747551003"), "978-0747551003");
     }
 }
