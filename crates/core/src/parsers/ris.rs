@@ -5,6 +5,7 @@ use super::{ParseOptions, ParseResult, ParseErrorInfo};
 fn ris_type_to_csl(ty: &str) -> &'static str {
     match ty {
         "JOUR" | "JFULL" => "article-journal",
+        "NEWS" => "article-newspaper",
         "BOOK" | "WHOLE" => "book",
         "CHAP" | "CHAPT" => "chapter",
         "THES" => "thesis",
@@ -12,6 +13,7 @@ fn ris_type_to_csl(ty: &str) -> &'static str {
         "RPRT" | "REPORT" => "report",
         "ELEC" | "ICOMM" => "webpage",
         "DATA" | "DBASE" => "dataset",
+        "COMP" => "software",
         _ => "article-journal",
     }
 }
@@ -103,9 +105,26 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
                         "TI" | "T1" => { entry.insert("title".into(), json!(value)); }
                         "JO" | "JF" | "T2" => { entry.insert("container-title".into(), json!(value)); }
                         "PY" | "Y1" => {
-                            let year_str = value.split('/').next().unwrap_or(value);
-                            if let Ok(year) = year_str.parse::<i32>() {
-                                entry.insert("issued".into(), json!({"date-parts": [[year]]}));
+                            // Only set year from PY if DA hasn't already set a full date
+                            if !entry.contains_key("issued") {
+                                let year_str = value.split('/').next().unwrap_or(value);
+                                if let Ok(year) = year_str.parse::<i32>() {
+                                    entry.insert("issued".into(), json!({"date-parts": [[year]]}));
+                                }
+                            }
+                        }
+                        "DA" | "Y2" => {
+                            // DA format: YYYY/MM/DD/ (month and day optional)
+                            let parts: Vec<&str> = value.split('/').collect();
+                            if let Some(Ok(year)) = parts.first().map(|y| y.parse::<i32>()) {
+                                let month = parts.get(1).and_then(|m| m.parse::<i32>().ok());
+                                let day = parts.get(2).and_then(|d| d.parse::<i32>().ok());
+                                let date_parts = match (month, day) {
+                                    (Some(m), Some(d)) if m > 0 && d > 0 => json!({"date-parts": [[year, m, d]]}),
+                                    (Some(m), _) if m > 0 => json!({"date-parts": [[year, m]]}),
+                                    _ => json!({"date-parts": [[year]]}),
+                                };
+                                entry.insert("issued".into(), date_parts);
                             }
                         }
                         "VL" => { entry.insert("volume".into(), json!(value)); }
@@ -154,6 +173,9 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
         if !authors.is_empty() {
             entry.insert("author".into(), json!(authors));
         }
+        if !keywords.is_empty() {
+            entry.insert("keyword".into(), json!(keywords.join(", ")));
+        }
         scanned += 1;
         if options.max_entries.map_or(true, |max| entries.len() < max) {
             entries.push(Value::Object(entry));
@@ -197,5 +219,78 @@ mod tests {
     fn test_parse_ris_empty() {
         let result = parse_ris("", &ParseOptions::default());
         assert!(result.entries.is_empty());
+    }
+
+    #[test]
+    fn test_parse_ris_comp_type() {
+        let input = "TY  - COMP\nTI  - My Software\nPY  - 2024\nER  - ";
+        let result = parse_ris(input, &ParseOptions::default());
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(result.entries[0]["type"], "software", "COMP should map to software");
+    }
+
+    #[test]
+    fn test_parse_ris_news_type() {
+        let input = "TY  - NEWS\nTI  - Breaking Story\nPY  - 2024\nER  - ";
+        let result = parse_ris(input, &ParseOptions::default());
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(result.entries[0]["type"], "article-newspaper", "NEWS should map to article-newspaper");
+    }
+
+    #[test]
+    fn test_parse_ris_da_full_date() {
+        let input = "TY  - JOUR\nTI  - Date Test\nPY  - 2024///\nDA  - 2024/01/14/\nER  - ";
+        let result = parse_ris(input, &ParseOptions::default());
+        let issued = &result.entries[0]["issued"]["date-parts"][0];
+        assert_eq!(issued[0], 2024, "year from DA");
+        assert_eq!(issued[1], 1, "month from DA");
+        assert_eq!(issued[2], 14, "day from DA");
+    }
+
+    #[test]
+    fn test_parse_ris_da_month_only() {
+        let input = "TY  - JOUR\nTI  - Month Test\nDA  - 2024/03/\nER  - ";
+        let result = parse_ris(input, &ParseOptions::default());
+        let issued = &result.entries[0]["issued"]["date-parts"][0];
+        assert_eq!(issued[0], 2024);
+        assert_eq!(issued[1], 3);
+        assert!(issued.get(2).is_none() || issued[2].is_null(), "no day when only month given");
+    }
+
+    #[test]
+    fn test_parse_ris_da_overrides_py() {
+        let input = "TY  - JOUR\nPY  - 2024///\nDA  - 2024/06/15/\nER  - ";
+        let result = parse_ris(input, &ParseOptions::default());
+        let issued = &result.entries[0]["issued"]["date-parts"][0];
+        assert_eq!(issued[1], 6, "DA should override PY's year-only date");
+    }
+
+    #[test]
+    fn test_parse_ris_keywords_without_er() {
+        let input = "TY  - JOUR\nTI  - No Terminator\nKW  - machine learning\nKW  - AI";
+        let result = parse_ris(input, &ParseOptions::default());
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(
+            result.entries[0]["keyword"], "machine learning, AI",
+            "keywords should be preserved even without ER terminator"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_ris_software() {
+        let item = serde_json::json!({
+            "type": "software",
+            "title": "My App",
+            "issued": {"date-parts": [[2024, 3, 15]]}
+        });
+        let exported = crate::export::ris::csl_json_to_ris(&item);
+        assert!(exported.contains("TY  - COMP"), "software should export as COMP");
+
+        let reimported = parse_ris(&exported, &ParseOptions::default());
+        assert_eq!(reimported.entries[0]["type"], "software", "COMP should roundtrip to software");
+        let issued = &reimported.entries[0]["issued"]["date-parts"][0];
+        assert_eq!(issued[0], 2024);
+        assert_eq!(issued[1], 3);
+        assert_eq!(issued[2], 15, "full date should survive roundtrip");
     }
 }
