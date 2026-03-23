@@ -5,7 +5,7 @@
     "type": "git",
     "url": "https://github.com/danielnichiata96/citeme-engine"
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "High-performance citation formatting engine powered by Rust/Wasm",
   "type": "module",
   "main": "index.js",
