@@ -11,4 +11,4 @@ export async function createEngine() {
   return new WasmCitationEngine();
 }
 
-export { WasmCitationEngine };
+export { init, WasmCitationEngine };

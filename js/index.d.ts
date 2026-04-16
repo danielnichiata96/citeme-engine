@@ -35,3 +35,10 @@ export declare class WasmCitationEngine {
 }
 
 export declare function createEngine(): Promise<WasmCitationEngine>;
+
+/**
+ * Initialize the Wasm module. Call before constructing WasmCitationEngine.
+ * Pass `{ module_or_path }` to specify an explicit URL for the .wasm binary
+ * (required in bundled environments where import.meta.url is unreliable).
+ */
+export default function init(options?: { module_or_path: string | URL | RequestInfo | BufferSource | WebAssembly.Module }): Promise<void>;

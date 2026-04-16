@@ -4,6 +4,7 @@ use hayagriva::citationberg::{IndependentStyle, LocaleFile, Locale, Style};
 use hayagriva::{BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest, CitePurpose};
 
 use crate::error::EngineError;
+use crate::normalize::normalize_csl_xml;
 use crate::types::{FormatOptions, FormatResult, OutputFormat};
 
 /// Citation formatting engine.
@@ -36,7 +37,8 @@ impl CitationEngine {
             return Ok(());
         }
 
-        let style = Style::from_xml(csl_xml)
+        let normalized = normalize_csl_xml(csl_xml);
+        let style = Style::from_xml(&normalized)
             .map_err(|e| EngineError::InvalidStyle(format!("{e}")))?;
 
         match style {
@@ -58,7 +60,8 @@ impl CitationEngine {
             return Ok(());
         }
 
-        let locale_file = LocaleFile::from_xml(locale_xml)
+        let normalized = normalize_csl_xml(locale_xml);
+        let locale_file = LocaleFile::from_xml(&normalized)
             .map_err(|e| EngineError::InvalidLocale(format!("{e}")))?;
 
         self.locales.push(locale_file.into());
@@ -550,6 +553,52 @@ mod tests {
         let stripped = result.in_text.replace("<span", "").replace("</span>", "");
         assert!(!stripped.trim_start().starts_with('('),
             "prose in_text should start with bare author, not '(' — got: {}", result.in_text);
+    }
+
+    #[test]
+    fn test_date_delimiter_no_trailing_space_artifact() {
+        // Regression: Hayagriva renders `<date delimiter=" ">` between every
+        // date-part even when neighbors are empty, producing "2018 ;" for
+        // year-only dates when the parent group adds a suffix. The CSL-XML
+        // normalizer rewrites the delimiter to per-part `prefix=" "`, which
+        // Hayagriva correctly suppresses on empty-preceding-siblings.
+        let style = r#"<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text" default-locale="en-US">
+  <info><title>t</title><id>t</id><updated>2024-01-01T00:00:00+00:00</updated></info>
+  <locale xml:lang="en">
+    <date form="text" delimiter=" ">
+      <date-part name="year"/>
+      <date-part name="month" form="short" strip-periods="true"/>
+      <date-part name="day"/>
+    </date>
+  </locale>
+  <citation><layout><text value="x"/></layout></citation>
+  <bibliography>
+    <layout>
+      <group suffix=";">
+        <date variable="issued" form="text"/>
+      </group>
+    </layout>
+  </bibliography>
+</style>"#;
+
+        let mut engine = CitationEngine::new();
+        engine.load_style("t", style).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let csl_json = r#"{"id":"x","type":"article-journal","issued":{"date-parts":[[2018]]}}"#;
+        let opts = FormatOptions { output_format: OutputFormat::Plain, ..Default::default() };
+        let out = engine.format_one(csl_json, "t", "en-US", &opts).unwrap();
+        assert!(
+            !out.reference.contains(" ;"),
+            "year-only date must not leak a trailing-space artifact before the group suffix; got: {:?}",
+            out.reference
+        );
+        assert!(
+            out.reference.contains("2018;"),
+            "expected '2018;' (year+suffix glued) in: {:?}",
+            out.reference
+        );
     }
 
     #[test]
