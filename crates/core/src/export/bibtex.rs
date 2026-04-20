@@ -27,7 +27,7 @@ fn csl_type_to_bibtex_with_genre(csl_type: &str, genre: Option<&str>) -> &'stati
 }
 
 /// Generate a BibTeX key from author family name and year.
-fn generate_key(item: &Value) -> String {
+pub(crate) fn generate_key(item: &Value) -> String {
     let author = item["author"].as_array()
         .and_then(|a| a.first())
         .and_then(|a| a["family"].as_str().or(a["literal"].as_str()))
@@ -50,7 +50,7 @@ fn generate_key(item: &Value) -> String {
 
 /// Format CSL-JSON author array as BibTeX author string.
 /// "Last, First and Last2, First2"
-fn format_authors(authors: &[Value]) -> String {
+pub(crate) fn format_authors(authors: &[Value]) -> String {
     authors.iter()
         .map(|a| {
             if let Some(literal) = a["literal"].as_str() {
@@ -83,7 +83,7 @@ fn format_authors(authors: &[Value]) -> String {
 }
 
 /// Escape BibTeX special characters in field values.
-fn escape_bibtex(s: &str) -> String {
+pub(crate) fn escape_bibtex(s: &str) -> String {
     s.replace('&', r"\&")
      .replace('%', r"\%")
      .replace('$', r"\$")
@@ -93,14 +93,28 @@ fn escape_bibtex(s: &str) -> String {
      .replace('^', r"\textasciicircum{}")
 }
 
+/// Resolve a cite key from a CSL-JSON item: use explicit `id` if present,
+/// else derive one via `generate_key`. Callers that need dedup across an
+/// array should use `csl_json_to_bibtex_with_key` with their own key.
+pub(crate) fn resolve_key(item: &Value) -> String {
+    item["id"].as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| generate_key(item))
+}
+
 /// Convert a CSL-JSON item to a BibTeX entry string.
 pub fn csl_json_to_bibtex(item: &Value) -> String {
+    csl_json_to_bibtex_with_key(item, &resolve_key(item))
+}
+
+/// Convert a CSL-JSON item to a BibTeX entry string with an explicit cite key.
+///
+/// This is the primitive used by `csl_json_array_to_bibtex` to emit entries
+/// with a/b/c suffixes when multiple items resolve to the same base key.
+pub(crate) fn csl_json_to_bibtex_with_key(item: &Value, key: &str) -> String {
     let csl_type = item["type"].as_str().unwrap_or("article-journal");
     let genre = item["genre"].as_str();
     let bib_type = csl_type_to_bibtex_with_genre(csl_type, genre);
-    let key = item["id"].as_str()
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| generate_key(item));
 
     let mut fields: Vec<String> = Vec::new();
 
@@ -133,14 +147,24 @@ pub fn csl_json_to_bibtex(item: &Value) -> String {
         fields.push(format!("  {field_name} = {{{}}}", escape_bibtex(container)));
     }
 
-    // Year
-    if let Some(year) = item["issued"]["date-parts"].as_array()
+    // Year + month. BibTeX tradition: `month = mar` (3-letter lowercase macro,
+    // no braces). Never numeric. Day is not a canonical BibTeX field.
+    let date_parts = item["issued"]["date-parts"].as_array()
         .and_then(|dp| dp.first())
-        .and_then(|parts| parts.as_array())
-        .and_then(|parts| parts.first())
-        .and_then(|y| y.as_i64())
-    {
-        fields.push(format!("  year = {{{year}}}"));
+        .and_then(|parts| parts.as_array());
+    if let Some(parts) = date_parts {
+        if let Some(year) = parts.first().and_then(|y| y.as_i64()) {
+            fields.push(format!("  year = {{{year}}}"));
+        }
+        if let Some(m) = parts.get(1).and_then(|m| m.as_i64()) {
+            const MONTHS: [&str; 12] = [
+                "jan", "feb", "mar", "apr", "may", "jun",
+                "jul", "aug", "sep", "oct", "nov", "dec",
+            ];
+            if (1..=12).contains(&m) {
+                fields.push(format!("  month = {}", MONTHS[(m - 1) as usize]));
+            }
+        }
     }
 
     // Volume, issue, pages (no escaping needed — numeric/simple values)
@@ -161,6 +185,44 @@ pub fn csl_json_to_bibtex(item: &Value) -> String {
     // Abstract (escape)
     if let Some(v) = item["abstract"].as_str() { fields.push(format!("  abstract = {{{}}}", escape_bibtex(v))); }
 
+    // Keywords — CSL `keyword` (singular, string) → BibTeX `keywords` (plural, convention)
+    if let Some(v) = item["keyword"].as_str() {
+        fields.push(format!("  keywords = {{{}}}", escape_bibtex(v)));
+    }
+
+    // Note
+    if let Some(v) = item["note"].as_str() {
+        fields.push(format!("  note = {{{}}}", escape_bibtex(v)));
+    }
+
+    // Series
+    if let Some(v) = item["collection-title"].as_str() {
+        fields.push(format!("  series = {{{}}}", escape_bibtex(v)));
+    }
+
+    // Chapter number — CSL can be string or number
+    if let Some(v) = item["chapter-number"].as_str() {
+        fields.push(format!("  chapter = {{{v}}}"));
+    } else if let Some(n) = item["chapter-number"].as_i64() {
+        fields.push(format!("  chapter = {{{n}}}"));
+    }
+
+    // PMID / PMCID — non-standard BibTeX but widely accepted (JabRef, Zotero)
+    if let Some(v) = item["PMID"].as_str() { fields.push(format!("  pmid = {{{v}}}")); }
+    if let Some(v) = item["PMCID"].as_str() { fields.push(format!("  pmcid = {{{v}}}")); }
+
+    // Eprint (from CSL custom.eprint) — common BibLaTeX-ism but accepted by
+    // most BibTeX tooling, and losing it on export would defeat roundtrip.
+    if let Some(eprint) = item["custom"]["eprint"]["id"].as_str() {
+        fields.push(format!("  eprint = {{{eprint}}}"));
+        if let Some(t) = item["custom"]["eprint"]["type"].as_str() {
+            fields.push(format!("  eprinttype = {{{t}}}"));
+        }
+        if let Some(c) = item["custom"]["eprint"]["class"].as_str() {
+            fields.push(format!("  eprintclass = {{{c}}}"));
+        }
+    }
+
     // Edition
     if let Some(v) = item["edition"].as_str() { fields.push(format!("  edition = {{{}}}", escape_bibtex(v))); }
 
@@ -168,12 +230,54 @@ pub fn csl_json_to_bibtex(item: &Value) -> String {
 }
 
 /// Convert multiple CSL-JSON items to a BibTeX file string.
+///
+/// Duplicate cite keys are disambiguated with `a`, `b`, `c`, … suffixes so the
+/// output is always parseable — BibTeX rejects repeated keys. Whether the
+/// collision came from an explicit user `id` or from `generate_key` fallback,
+/// we still dedup: a duplicate key makes the whole file invalid.
 pub fn csl_json_array_to_bibtex(items: &[Value]) -> String {
-    let mut out = items.iter()
-        .map(|item| csl_json_to_bibtex(item))
+    let keys = disambiguate_keys(items);
+    let mut out = items.iter().zip(keys.iter())
+        .map(|(item, key)| csl_json_to_bibtex_with_key(item, key))
         .collect::<Vec<_>>()
         .join("\n\n");
     out.push('\n');
+    out
+}
+
+/// Resolve each item's cite key and append `a`/`b`/`c`/… suffixes on
+/// collisions. Preserved in insertion order: the first occurrence keeps the
+/// bare key, subsequent occurrences get `a`, `b`, `c`, …
+///
+/// Shared with the BibLaTeX exporter so both emit consistent keys when the
+/// same array is exported in multiple formats.
+pub(crate) fn disambiguate_keys(items: &[Value]) -> Vec<String> {
+    use std::collections::HashMap;
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    items.iter().map(|item| {
+        let base = resolve_key(item);
+        let n = counts.entry(base.clone()).or_insert(0);
+        let out = if *n == 0 {
+            base.clone()
+        } else {
+            let suffix = suffix_for(*n);
+            format!("{base}{suffix}")
+        };
+        *n += 1;
+        out
+    }).collect()
+}
+
+/// Alphabetic suffix for the Nth (1-indexed) duplicate: 1→`a`, 2→`b`, …,
+/// 26→`z`, 27→`aa`, 28→`ab`, …
+fn suffix_for(mut n: usize) -> String {
+    let mut out = String::new();
+    loop {
+        let digit = ((n - 1) % 26) as u8;
+        out.insert(0, (b'a' + digit) as char);
+        n = (n - 1) / 26;
+        if n == 0 { break; }
+    }
     out
 }
 
@@ -232,6 +336,131 @@ mod tests {
 
         let bib = csl_json_to_bibtex(&item);
         assert!(bib.contains("author = {{World Health Organization}}"), "literal author should be braced: {bib}");
+    }
+
+    #[test]
+    fn test_export_month_as_macro() {
+        // BibTeX `month` must be a 3-letter macro (no braces), not a number.
+        let item = json!({
+            "type": "article-journal",
+            "id": "x2024",
+            "title": "T",
+            "author": [{"family": "X"}],
+            "issued": {"date-parts": [[2024, 3, 15]]}
+        });
+        let bib = csl_json_to_bibtex(&item);
+        assert!(bib.contains("month = mar"), "month should be macro: {bib}");
+        assert!(!bib.contains("month = {3}"), "month must not be numeric-braced: {bib}");
+        assert!(!bib.contains("month = {mar}"), "month macro must not be braced: {bib}");
+    }
+
+    #[test]
+    fn test_export_preserves_eprint() {
+        let item = json!({
+            "type": "article-journal",
+            "id": "arxiv2301",
+            "title": "T",
+            "author": [{"family": "X"}],
+            "issued": {"date-parts": [[2024]]},
+            "custom": {"eprint": {"id": "2301.12345", "type": "arxiv", "class": "cs.CL"}}
+        });
+        let bib = csl_json_to_bibtex(&item);
+        assert!(bib.contains("eprint = {2301.12345}"), "eprint id: {bib}");
+        assert!(bib.contains("eprinttype = {arxiv}"), "eprint type: {bib}");
+        assert!(bib.contains("eprintclass = {cs.CL}"), "eprint class: {bib}");
+    }
+
+    #[test]
+    fn test_export_keywords_singular_csl_to_plural_bibtex() {
+        let item = json!({
+            "type": "article-journal",
+            "id": "x2024",
+            "title": "T",
+            "author": [{"family": "X"}],
+            "issued": {"date-parts": [[2024]]},
+            "keyword": "ml, nlp"
+        });
+        let bib = csl_json_to_bibtex(&item);
+        assert!(bib.contains("keywords = {ml, nlp}"),
+            "CSL `keyword` (singular) → BibTeX `keywords` (plural): {bib}");
+    }
+
+    #[test]
+    fn test_export_preserves_note_series_chapter_pmid() {
+        let item = json!({
+            "type": "chapter",
+            "id": "k2023",
+            "title": "Chapter T",
+            "author": [{"family": "K"}],
+            "issued": {"date-parts": [[2023]]},
+            "note": "Funded by NSF",
+            "collection-title": "Studies in X",
+            "chapter-number": "7",
+            "PMID": "12345678",
+            "PMCID": "PMC9876543"
+        });
+        let bib = csl_json_to_bibtex(&item);
+        assert!(bib.contains("note = {Funded by NSF}"), "note: {bib}");
+        assert!(bib.contains("series = {Studies in X}"), "series: {bib}");
+        assert!(bib.contains("chapter = {7}"), "chapter: {bib}");
+        assert!(bib.contains("pmid = {12345678}"), "pmid: {bib}");
+        assert!(bib.contains("pmcid = {PMC9876543}"), "pmcid: {bib}");
+    }
+
+    #[test]
+    fn test_roundtrip_bibtex_keeps_abstract() {
+        let input = r#"@article{smith2024, author = {Smith, J.}, title = {T}, journal = {J}, year = {2024}, abstract = {This is the abstract.}, keywords = {ml, nlp}, note = {funded}}"#;
+        let parsed = crate::parsers::bibtex::parse_bibtex(input, &crate::parsers::ParseOptions::default());
+        assert_eq!(parsed.entries.len(), 1);
+        let exported = csl_json_to_bibtex(&parsed.entries[0]);
+        assert!(exported.contains("abstract = {This is the abstract.}"), "abstract survives: {exported}");
+        assert!(exported.contains("keywords = {"), "keywords survive: {exported}");
+        assert!(exported.contains("note = {funded}"), "note survives: {exported}");
+    }
+
+    #[test]
+    fn test_array_dedup_keys() {
+        // Three Smith-2024 entries — without dedup, BibTeX rejects the file.
+        let items = vec![
+            json!({"type": "article-journal", "author": [{"family": "Smith"}],
+                   "title": "A", "issued": {"date-parts": [[2024]]}}),
+            json!({"type": "article-journal", "author": [{"family": "Smith"}],
+                   "title": "B", "issued": {"date-parts": [[2024]]}}),
+            json!({"type": "article-journal", "author": [{"family": "Smith"}],
+                   "title": "C", "issued": {"date-parts": [[2024]]}}),
+        ];
+        let out = csl_json_array_to_bibtex(&items);
+        assert!(out.contains("@article{Smith2024,"), "first entry bare key: {out}");
+        assert!(out.contains("@article{Smith2024a,"), "second gets 'a': {out}");
+        assert!(out.contains("@article{Smith2024b,"), "third gets 'b': {out}");
+    }
+
+    #[test]
+    fn test_array_dedup_respects_explicit_id() {
+        // Explicit user `id` still gets dedup — the file must be valid BibTeX
+        // regardless of where the collision came from.
+        let items = vec![
+            json!({"type": "article-journal", "id": "custom",
+                   "author": [{"family": "X"}], "title": "A",
+                   "issued": {"date-parts": [[2024]]}}),
+            json!({"type": "article-journal", "id": "custom",
+                   "author": [{"family": "Y"}], "title": "B",
+                   "issued": {"date-parts": [[2024]]}}),
+        ];
+        let out = csl_json_array_to_bibtex(&items);
+        assert!(out.contains("@article{custom,"), "first keeps bare id: {out}");
+        assert!(out.contains("@article{customa,"), "second gets suffix: {out}");
+    }
+
+    #[test]
+    fn test_suffix_for_rolls_past_z() {
+        // 26 collisions exhaust single-letter suffixes; 27+ roll to `aa`, `ab`, …
+        assert_eq!(suffix_for(1), "a");
+        assert_eq!(suffix_for(26), "z");
+        assert_eq!(suffix_for(27), "aa");
+        assert_eq!(suffix_for(28), "ab");
+        assert_eq!(suffix_for(52), "az");
+        assert_eq!(suffix_for(53), "ba");
     }
 
     #[test]

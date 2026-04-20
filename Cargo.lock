@@ -122,8 +122,9 @@ dependencies = [
 
 [[package]]
 name = "citeme-engine-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
+ "biblatex",
  "criterion",
  "hayagriva",
  "serde",
@@ -133,7 +134,7 @@ dependencies = [
 
 [[package]]
 name = "citeme-engine-wasm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "citeme-engine-core",
  "console_error_panic_hook",
