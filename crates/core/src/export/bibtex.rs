@@ -453,6 +453,33 @@ mod tests {
     }
 
     #[test]
+    fn test_disambiguate_keys_first_seen_semantics() {
+        // Pin the contract: first-seen keeps the bare key; subsequent
+        // collisions take `a`, `b`, `c`, ... This is non-commutative — the
+        // *set* of keys is stable under reordering, but the binding of
+        // cite-key → item is not. Downstream consumers that export the same
+        // items in different orders will get the same keys attached to
+        // different items. Documented here so a future refactor (e.g. sort
+        // before dedup for determinism) doesn't change it silently.
+        let a = vec![
+            json!({"type": "article-journal", "id": "dup",
+                   "author": [{"family": "A"}], "title": "Early",
+                   "issued": {"date-parts": [[2024]]}}),
+            json!({"type": "article-journal", "id": "dup",
+                   "author": [{"family": "B"}], "title": "Late",
+                   "issued": {"date-parts": [[2024]]}}),
+        ];
+        let keys_a = disambiguate_keys(&a);
+        assert_eq!(keys_a, vec!["dup", "dupa"], "forward order: {keys_a:?}");
+
+        let b = vec![a[1].clone(), a[0].clone()];
+        let keys_b = disambiguate_keys(&b);
+        assert_eq!(keys_b, vec!["dup", "dupa"], "reversed order yields same SET: {keys_b:?}");
+        // But the item-to-key binding is reversed:
+        // in `a`, "Early" gets bare `dup`; in `b`, "Late" gets bare `dup`.
+    }
+
+    #[test]
     fn test_suffix_for_rolls_past_z() {
         // 26 collisions exhaust single-letter suffixes; 27+ roll to `aa`, `ab`, …
         assert_eq!(suffix_for(1), "a");

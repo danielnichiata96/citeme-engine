@@ -30,9 +30,13 @@ and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 - `biblatex = "0.11"` is now a direct dependency (was transitive via
   `hayagriva`); used for the dual-parse path.
 
-### Fixed
-- Duplicate cite keys no longer silently wipe out the metadata merge for
-  all entries in the file (biblatex's `DuplicateKey` error is caught and
-  the parser falls through to per-chunk parsing).
-- `eprint = {…}` without `eprinttype` no longer leaks an ambiguous
-  `custom.eprint` object — both fields are required to emit.
+### Notes
+- The BibTeX dual-parse path tolerates duplicate cite keys and individual
+  malformed entries via per-chunk fallback, so metadata enrichment still
+  fires on the non-duplicate / non-broken entries.
+- `eprint = {…}` without `eprinttype` is ignored rather than emitted as an
+  ambiguous `custom.eprint`. Both fields must be present to reach the CSL
+  output (and to survive roundtrip through the exporters).
+- Out-of-range month/day in the CSL `issued.date-parts` are silently
+  dropped to the next-lower precision in the BibLaTeX exporter (prevents
+  malformed EDTF that Biber would reject).

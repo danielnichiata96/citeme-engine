@@ -34,8 +34,12 @@ fn format_biblatex_date(item: &Value) -> Option<String> {
         .first()?
         .as_array()?;
     let year = parts.first()?.as_i64()?;
-    let month = parts.get(1).and_then(|m| m.as_i64());
-    let day = parts.get(2).and_then(|d| d.as_i64());
+    // Drop out-of-range month/day rather than emitting malformed EDTF like
+    // `2024-999`. Biber rejects those; fall back to lower precision.
+    let month = parts.get(1).and_then(|m| m.as_i64())
+        .filter(|m| (1..=12).contains(m));
+    let day = parts.get(2).and_then(|d| d.as_i64())
+        .filter(|d| (1..=31).contains(d));
     Some(match (month, day) {
         (Some(m), Some(d)) => format!("{year:04}-{m:02}-{d:02}"),
         (Some(m), None) => format!("{year:04}-{m:02}"),

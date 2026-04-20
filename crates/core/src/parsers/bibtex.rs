@@ -283,28 +283,19 @@ fn merge_biblatex_extras(entries: &mut [Value], input: &str) {
                 .map(|c| c.format_verbatim().trim().to_string())
                 .filter(|s| !s.is_empty());
 
-            let hayagriva_already_set = obj.get("custom")
-                .and_then(|c| c.get("eprint"))
-                .and_then(|e| e.get("id"))
-                .is_some();
-
-            let should_create = !id.is_empty() && eprint_type.is_some();
-            let should_augment = hayagriva_already_set && eprint_class.is_some();
-
-            if should_create || should_augment {
+            // Require id + type to avoid leaking incomplete `custom.eprint`
+            // into downstream exports. If hayagriva already populated
+            // `custom.eprint` via `entry.arxiv()`, this branch also fires
+            // (biblatex reads the same `eprinttype` field), and we layer
+            // `class` in via the map-merge below without clobbering id/type.
+            if !id.is_empty() && eprint_type.is_some() {
                 let custom = obj.entry("custom").or_insert_with(|| json!({}));
-                // `custom` is always an Object by construction (entry_to_csl_json
-                // only writes `{}` here, and the hayagriva arxiv branch writes
-                // an object too). Defend against mis-shaped external input by
-                // resetting to an empty map rather than panicking.
                 if let Some(map) = custom.as_object_mut() {
                     let mut eprint_obj = match map.get("eprint").cloned() {
                         Some(Value::Object(m)) => m,
                         _ => serde_json::Map::new(),
                     };
-                    if !id.is_empty() {
-                        eprint_obj.entry("id").or_insert_with(|| json!(id));
-                    }
+                    eprint_obj.entry("id").or_insert_with(|| json!(id));
                     if let Some(t) = eprint_type {
                         eprint_obj.entry("type").or_insert_with(|| json!(t));
                     }
