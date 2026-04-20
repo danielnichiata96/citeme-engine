@@ -102,10 +102,14 @@ pub fn csl_json_to_ris(item: &Value) -> String {
     // Language
     if let Some(v) = item["language"].as_str() { lines.push(format!("LA  - {v}")); }
 
-    // Keywords
-    if let Some(kw) = item["keyword"].as_str() {
+    // Keywords — split the normalized comma-separated form (which covers
+    // both v1.0.1 string and v1.0.2 array inputs) into one `KW` tag per item.
+    if let Some(kw) = super::bibtex::csl_keyword_as_string(item) {
         for k in kw.split(',') {
-            lines.push(format!("KW  - {}", k.trim()));
+            let k = k.trim();
+            if !k.is_empty() {
+                lines.push(format!("KW  - {k}"));
+            }
         }
     }
 
@@ -168,6 +172,20 @@ mod tests {
         let ris = csl_json_to_ris(&item);
         assert!(ris.contains("TY  - BOOK"), "should be BOOK: {ris}");
         assert!(ris.contains("PB  - Anchor Books"), "should have publisher: {ris}");
+    }
+
+    #[test]
+    fn test_export_keyword_array_form_reaches_ris() {
+        let item = json!({
+            "type": "article-journal",
+            "title": "T",
+            "author": [{"family": "X"}],
+            "issued": {"date-parts": [[2024]]},
+            "keyword": ["ml", "nlp"]
+        });
+        let ris = csl_json_to_ris(&item);
+        assert!(ris.contains("KW  - ml"), "array keyword → KW: {ris}");
+        assert!(ris.contains("KW  - nlp"), "array keyword → KW: {ris}");
     }
 
     #[test]

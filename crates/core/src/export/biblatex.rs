@@ -1,5 +1,6 @@
 use serde_json::Value;
-use super::bibtex::{disambiguate_keys, escape_bibtex, format_authors, resolve_key};
+use super::bibtex::{csl_keyword_as_string, disambiguate_keys, escape_bibtex,
+                    format_authors, resolve_key};
 
 /// CSL-JSON type → BibLaTeX entry type mapping.
 ///
@@ -116,8 +117,8 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
     if let Some(v) = item["abstract"].as_str() {
         fields.push(format!("  abstract = {{{}}}", escape_bibtex(v)));
     }
-    if let Some(v) = item["keyword"].as_str() {
-        fields.push(format!("  keywords = {{{}}}", escape_bibtex(v)));
+    if let Some(v) = csl_keyword_as_string(item) {
+        fields.push(format!("  keywords = {{{}}}", escape_bibtex(&v)));
     }
     if let Some(v) = item["note"].as_str() {
         fields.push(format!("  note = {{{}}}", escape_bibtex(v)));
@@ -337,6 +338,20 @@ mod tests {
         assert!(bib.starts_with("@report{"), "biblatex uses @report: {bib}");
         assert!(bib.contains("author = {{World Health Organization}}"),
             "literal author braced: {bib}");
+    }
+
+    #[test]
+    fn test_export_keyword_array_form_reaches_biblatex() {
+        let item = json!({
+            "type": "article-journal",
+            "id": "x2024",
+            "title": "T",
+            "author": [{"family": "X"}],
+            "issued": {"date-parts": [[2024]]},
+            "keyword": ["ml", "nlp"]
+        });
+        let bib = csl_json_to_biblatex(&item);
+        assert!(bib.contains("keywords = {ml, nlp}"), "array form must export: {bib}");
     }
 
     #[test]

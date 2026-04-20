@@ -82,6 +82,29 @@ pub(crate) fn format_authors(authors: &[Value]) -> String {
         .join(" and ")
 }
 
+/// Read a CSL `keyword` as a normalized comma-separated string, tolerating
+/// both the v1.0.1 string form and the v1.0.2 array form.
+///
+/// CSL v1.0.1 defined `keyword` as a single string (comma-separated by
+/// convention). v1.0.2 also permits an array of strings. Consumers emit
+/// either form in the wild; this helper collapses both to the string shape
+/// our exporters already emit, so an array-form input isn't silently dropped.
+pub(crate) fn csl_keyword_as_string(item: &Value) -> Option<String> {
+    if let Some(s) = item["keyword"].as_str() {
+        let trimmed = s.trim();
+        return if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+    }
+    if let Some(arr) = item["keyword"].as_array() {
+        let joined: Vec<String> = arr.iter()
+            .filter_map(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        return if joined.is_empty() { None } else { Some(joined.join(", ")) };
+    }
+    None
+}
+
 /// Escape BibTeX special characters in field values.
 pub(crate) fn escape_bibtex(s: &str) -> String {
     s.replace('&', r"\&")
@@ -185,9 +208,10 @@ pub(crate) fn csl_json_to_bibtex_with_key(item: &Value, key: &str) -> String {
     // Abstract (escape)
     if let Some(v) = item["abstract"].as_str() { fields.push(format!("  abstract = {{{}}}", escape_bibtex(v))); }
 
-    // Keywords — CSL `keyword` (singular, string) → BibTeX `keywords` (plural, convention)
-    if let Some(v) = item["keyword"].as_str() {
-        fields.push(format!("  keywords = {{{}}}", escape_bibtex(v)));
+    // Keywords — CSL `keyword` (singular, string OR v1.0.2 array) → BibTeX
+    // `keywords` (plural, comma-separated).
+    if let Some(v) = csl_keyword_as_string(item) {
+        fields.push(format!("  keywords = {{{}}}", escape_bibtex(&v)));
     }
 
     // Note
@@ -368,6 +392,44 @@ mod tests {
         assert!(bib.contains("eprint = {2301.12345}"), "eprint id: {bib}");
         assert!(bib.contains("eprinttype = {arxiv}"), "eprint type: {bib}");
         assert!(bib.contains("eprintclass = {cs.CL}"), "eprint class: {bib}");
+    }
+
+    #[test]
+    fn test_keyword_accepts_array_form() {
+        // CSL v1.0.2 permits `keyword: ["a", "b"]`. Helper collapses to string.
+        assert_eq!(
+            csl_keyword_as_string(&json!({"keyword": ["ml", "nlp", "  transformers  "]})),
+            Some("ml, nlp, transformers".to_string())
+        );
+        // v1.0.1 string form still works.
+        assert_eq!(
+            csl_keyword_as_string(&json!({"keyword": "ml, nlp"})),
+            Some("ml, nlp".to_string())
+        );
+        // Array of mixed garbage → filtered out cleanly.
+        assert_eq!(
+            csl_keyword_as_string(&json!({"keyword": ["", "  ", "real", null, 42]})),
+            Some("real".to_string())
+        );
+        // Empty / missing → None, no spurious `keywords = {}`.
+        assert_eq!(csl_keyword_as_string(&json!({})), None);
+        assert_eq!(csl_keyword_as_string(&json!({"keyword": ""})), None);
+        assert_eq!(csl_keyword_as_string(&json!({"keyword": []})), None);
+    }
+
+    #[test]
+    fn test_export_keyword_array_form_reaches_bibtex() {
+        // Regression guard: array-form keyword must not be silently dropped.
+        let item = json!({
+            "type": "article-journal",
+            "id": "x2024",
+            "title": "T",
+            "author": [{"family": "X"}],
+            "issued": {"date-parts": [[2024]]},
+            "keyword": ["ml", "nlp"]
+        });
+        let bib = csl_json_to_bibtex(&item);
+        assert!(bib.contains("keywords = {ml, nlp}"), "array form must export: {bib}");
     }
 
     #[test]
