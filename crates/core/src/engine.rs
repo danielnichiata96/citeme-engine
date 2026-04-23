@@ -56,7 +56,7 @@ impl CitationEngine {
 
     /// Load a locale from XML.
     pub fn load_locale(&mut self, locale_code: &str, locale_xml: &str) -> Result<(), EngineError> {
-        if self.loaded_locale_codes.contains(&locale_code.to_string()) {
+        if self.has_locale(locale_code) {
             return Ok(());
         }
 
@@ -72,6 +72,11 @@ impl CitationEngine {
     /// Check if a style is loaded.
     pub fn has_style(&self, name: &str) -> bool {
         self.styles.contains_key(name)
+    }
+
+    /// Check if a locale is loaded.
+    pub fn has_locale(&self, locale_code: &str) -> bool {
+        self.loaded_locale_codes.iter().any(|code| code == locale_code)
     }
 
     /// List loaded style names.
@@ -346,6 +351,7 @@ mod tests {
         let mut engine = CitationEngine::new();
 
         assert!(!engine.has_style("apa"));
+        assert!(!engine.has_locale("en-US"));
 
         engine.load_style("apa", SAMPLE_CSL).unwrap();
         assert!(engine.has_style("apa"));
@@ -354,6 +360,7 @@ mod tests {
         engine.load_style("apa", SAMPLE_CSL).unwrap();
 
         engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+        assert!(engine.has_locale("en-US"));
     }
 
     #[test]

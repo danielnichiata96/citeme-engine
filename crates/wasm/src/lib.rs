@@ -41,6 +41,12 @@ impl WasmCitationEngine {
         self.inner.has_style(name)
     }
 
+    /// Check if a locale is loaded.
+    #[wasm_bindgen(js_name = "hasLocale")]
+    pub fn has_locale(&self, locale_code: &str) -> bool {
+        self.inner.has_locale(locale_code)
+    }
+
     /// Format a batch of CSL-JSON items.
     /// Input: JSON string of CSL-JSON array. Output: JSON string of FormatResult array.
     #[wasm_bindgen(js_name = "formatBatch")]

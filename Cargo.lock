@@ -130,11 +130,12 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "unicode-normalization",
 ]
 
 [[package]]
 name = "citeme-engine-wasm"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "citeme-engine-core",
  "console_error_panic_hook",

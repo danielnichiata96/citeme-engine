@@ -26,5 +26,16 @@ fn test_wasm_format_one_apa() {
 #[wasm_bindgen_test]
 fn test_wasm_version() {
     let engine = WasmCitationEngine::new();
-    assert_eq!(engine.version(), "0.1.0");
+    assert_eq!(engine.version(), env!("CARGO_PKG_VERSION"));
+}
+
+#[wasm_bindgen_test]
+fn test_wasm_has_locale() {
+    let mut engine = WasmCitationEngine::new();
+
+    let locale = include_str!("../../../tests/fixtures/locales/locales-en-US.xml");
+
+    assert!(!engine.has_locale("en-US"));
+    engine.load_locale("en-US", locale).unwrap();
+    assert!(engine.has_locale("en-US"));
 }
