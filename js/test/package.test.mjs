@@ -48,3 +48,69 @@ test('parseBibtex normalizes combining-mark LaTeX commands', async () => {
     { family: 'García', given: 'María' },
   ]);
 });
+
+test('parseBibtex preserves BibLaTeX-only entry types and fields', async () => {
+  const engine = await createEngine({ module_or_path: await wasmBytesPromise });
+  const bib = `@dataset{data2023,
+  author = {Lab, Some},
+  title = {Dataset X},
+  publisher = {Zenodo},
+  date = {2023},
+  doi = {10.5281/zenodo.1234567}
+}
+
+@software{tool2024,
+  author = {Dev Team},
+  title = {A Tool},
+  version = {1.2.0},
+  date = {2024-03-01},
+  url = {https://github.com/x/y}
+}`;
+
+  const result = JSON.parse(engine.parseBibtex(bib));
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.entries[0].type, 'dataset');
+  assert.equal(result.entries[0].publisher, 'Zenodo');
+  assert.equal(result.entries[1].type, 'software');
+  assert.equal(result.entries[1].URL, 'https://github.com/x/y');
+  assert.equal(result.entries[1].version, '1.2.0');
+});
+
+test('parseMedline accepts collapsed tag spacing', async () => {
+  const engine = await createEngine({ module_or_path: await wasmBytesPromise });
+  const nbib = `PMID- 41764257
+TI - A normalized MEDLINE title.
+FAU - Zaman, Khalid
+DP - 2026 Feb
+JT - Scientific reports
+LID - 10.1038/s41598-026-40798-8 [doi]
+`;
+
+  const result = JSON.parse(engine.parseMedline(nbib));
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.entries.length, 1);
+  assert.equal(result.entries[0].title, 'A normalized MEDLINE title.');
+  assert.equal(result.entries[0]['container-title'], 'Scientific reports');
+});
+
+test('formatOneWithOutput supports plain output', async () => {
+  const engine = await createEngine({ module_or_path: await wasmBytesPromise });
+  engine.loadStyle('apa', await stylePromise);
+  engine.loadLocale('en-US', await localePromise);
+  const book = JSON.stringify({
+    type: 'book',
+    title: 'The Elements of Statistical Learning',
+    author: [{ family: 'Hastie', given: 'Trevor' }],
+    issued: { 'date-parts': [[2009]] },
+    publisher: 'Springer',
+  });
+
+  const html = JSON.parse(engine.formatOneWithOutput(book, 'apa', 'en-US', false, 'html', false));
+  const plain = JSON.parse(engine.formatOneWithOutput(book, 'apa', 'en-US', false, 'plain', false));
+
+  assert.match(html.reference, /<span|<i|<em/);
+  assert.doesNotMatch(plain.reference, /<[^>]+>/);
+  assert.equal(plain.inText, '(Hastie, 2009)');
+});

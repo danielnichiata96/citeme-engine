@@ -2,6 +2,14 @@ use wasm_bindgen::prelude::*;
 use citeme_engine_core::engine::CitationEngine;
 use citeme_engine_core::types::{FormatOptions, OutputFormat};
 
+fn parse_output_format(output_format: &str) -> Result<OutputFormat, JsError> {
+    match output_format.trim().to_ascii_lowercase().as_str() {
+        "html" => Ok(OutputFormat::Html),
+        "plain" | "text" => Ok(OutputFormat::Plain),
+        other => Err(JsError::new(&format!("unsupported output format: {other}"))),
+    }
+}
+
 /// The main engine struct exposed to JavaScript.
 /// Holds compiled CSL styles and locales in Wasm linear memory.
 #[wasm_bindgen]
@@ -93,6 +101,33 @@ impl WasmCitationEngine {
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
+    /// Format a single CSL-JSON item with an explicit output format.
+    ///
+    /// `outputFormat` accepts `"html"` (default behavior) or `"plain"` (no markup).
+    /// `prose=true` returns narrative citation form ("Smith (2024)").
+    #[wasm_bindgen(js_name = "formatOneWithOutput")]
+    pub fn format_one_with_output(
+        &self,
+        csl_json_str: &str,
+        style_name: &str,
+        locale_code: &str,
+        abnt_post_process: bool,
+        output_format: &str,
+        prose: bool,
+    ) -> Result<String, JsError> {
+        let options = FormatOptions {
+            output_format: parse_output_format(output_format)?,
+            abnt_post_process,
+            prose,
+        };
+
+        let result = self.inner.format_one(csl_json_str, style_name, locale_code, &options)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&result)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     /// Format a single CSL-JSON item as a narrative/prose citation ("Smith (2024)").
     /// Input: JSON string of one CSL-JSON item. Output: JSON string of FormatResult.
     #[wasm_bindgen(js_name = "formatOneProse")]
@@ -130,6 +165,33 @@ impl WasmCitationEngine {
             output_format: OutputFormat::Html,
             abnt_post_process,
             prose: true,
+        };
+
+        let results = self.inner.format_batch(csl_json_str, style_name, locale_code, &options)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+
+        serde_json::to_string(&results)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Format a batch of CSL-JSON items with an explicit output format.
+    ///
+    /// `outputFormat` accepts `"html"` (default behavior) or `"plain"` (no markup).
+    /// `prose=true` returns narrative citation form ("Smith (2024)").
+    #[wasm_bindgen(js_name = "formatBatchWithOutput")]
+    pub fn format_batch_with_output(
+        &self,
+        csl_json_str: &str,
+        style_name: &str,
+        locale_code: &str,
+        abnt_post_process: bool,
+        output_format: &str,
+        prose: bool,
+    ) -> Result<String, JsError> {
+        let options = FormatOptions {
+            output_format: parse_output_format(output_format)?,
+            abnt_post_process,
+            prose,
         };
 
         let results = self.inner.format_batch(csl_json_str, style_name, locale_code, &options)

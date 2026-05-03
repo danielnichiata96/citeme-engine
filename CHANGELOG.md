@@ -5,6 +5,20 @@ All notable changes to `citeme-engine` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [0.3.2] — 2026-05-03
+
+### Added
+- Wasm API methods `formatOneWithOutput` and `formatBatchWithOutput` for
+  explicit `"html"` vs `"plain"` rendering without changing the existing
+  `formatOne` / `formatBatch` signatures.
+
+### Fixed
+- BibLaTeX import now preserves BibLaTeX-only entry types and fields used by
+  CiteMe exports, including `@dataset`, `@software`, `journaltitle`, `location`,
+  `eventtitle`, `volume`, `number`, `url`, `version`, and `urldate`.
+- MEDLINE/NBIB parser now accepts normalized tag spacing such as `TI - value`
+  as well as fixed-width `TI  - value`.
+
 ## [0.3.0] — 2026-04-20
 
 ### Added
