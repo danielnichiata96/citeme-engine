@@ -77,9 +77,10 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
             continue;
         }
 
-        // MEDLINE tags: "XXXX- value" (tag is left-justified in first 4 chars)
-        let (tag, value) = if line.len() >= 6 && &line[4..6] == "- " {
-            (line[..4].trim().to_string(), line[6..].trim().to_string())
+        // MEDLINE tags are commonly fixed-width (`TI  - value`), but text
+        // normalizers often collapse the double spaces to `TI - value`.
+        let (tag, value) = if let Some((tag, value)) = parse_tag_line(line) {
+            (tag, value)
         } else if line.starts_with("      ") {
             // Continuation line (6+ spaces) — append to last tag
             (last_tag.clone(), line.trim().to_string())
@@ -126,6 +127,18 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
         truncated,
         scanned_entries: scanned,
     }
+}
+
+fn parse_tag_line(line: &str) -> Option<(String, String)> {
+    let (raw_tag, raw_value) = line.split_once('-')?;
+    let tag = raw_tag.trim();
+    if !(2..=4).contains(&tag.len()) {
+        return None;
+    }
+    if !tag.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit()) {
+        return None;
+    }
+    Some((tag.to_string(), raw_value.trim_start().to_string()))
 }
 
 /// Internal record accumulator.
@@ -354,6 +367,25 @@ mod tests {
         let second = &result.entries[1];
         assert_eq!(second["title"], "Advances in Quantum Computing: A Review");
         assert_eq!(second["container-title"], "Nature Reviews");
+    }
+
+    #[test]
+    fn test_parse_medline_accepts_collapsed_tag_spacing() {
+        let input = r#"PMID- 41764257
+TI - A normalized MEDLINE title.
+FAU - Zaman, Khalid
+DP - 2026 Feb
+JT - Scientific reports
+LID - 10.1038/s41598-026-40798-8 [doi]
+
+"#;
+        let result = parse_medline(input, &ParseOptions::default());
+
+        assert_eq!(result.entries.len(), 1, "should parse normalized tags: {:?}", result.errors);
+        let first = &result.entries[0];
+        assert_eq!(first["title"], "A normalized MEDLINE title.");
+        assert_eq!(first["container-title"], "Scientific reports");
+        assert_eq!(first["DOI"], "10.1038/s41598-026-40798-8");
     }
 
     #[test]
