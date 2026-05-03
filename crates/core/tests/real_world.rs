@@ -187,8 +187,6 @@ fn test_real_nbib_format_apa() {
 
 #[test]
 fn test_real_auto_detect_and_parse() {
-    let opts = ParseOptions::default();
-
     // BibTeX
     let bib = parsers::detect::detect_format(REAL_BIBTEX);
     assert_eq!(bib, InputFormat::Bibtex);

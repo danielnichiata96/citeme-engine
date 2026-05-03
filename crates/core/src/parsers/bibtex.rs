@@ -67,6 +67,66 @@ fn normalize_display_text(text: &str) -> String {
     text.nfc().collect()
 }
 
+fn bib_field(entry: &biblatex::Entry, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        entry.get(key)
+            .map(|chunks| normalize_display_text(chunks.format_verbatim().trim()))
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn insert_string_if_missing(
+    obj: &mut serde_json::Map<String, Value>,
+    key: &str,
+    value: Option<String>,
+) {
+    if obj.get(key).and_then(|v| v.as_str()).is_some_and(|s| !s.trim().is_empty()) {
+        return;
+    }
+    if let Some(value) = value.filter(|s| !s.trim().is_empty()) {
+        obj.insert(key.into(), json!(value));
+    }
+}
+
+fn date_parts_from_isoish(input: &str) -> Option<Value> {
+    let mut parts = Vec::new();
+    for raw in input.split(['-', '/']).take(3) {
+        if raw.is_empty() || !raw.chars().all(|c| c.is_ascii_digit()) {
+            break;
+        }
+        let Ok(part) = raw.parse::<i32>() else { break };
+        parts.push(part);
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(json!({ "date-parts": [parts] }))
+}
+
+fn biblatex_type_to_csl(entry: &biblatex::Entry) -> Option<&'static str> {
+    use biblatex::EntryType as T;
+
+    match &entry.entry_type {
+        T::Article => {
+            if bib_field(entry, &["journaltitle", "journal"]).is_some() {
+                Some("article-journal")
+            } else {
+                Some("article")
+            }
+        }
+        T::Book | T::MvBook => Some("book"),
+        T::InBook | T::InCollection | T::SuppBook | T::SuppCollection | T::InReference => Some("chapter"),
+        T::InProceedings | T::Proceedings | T::MvProceedings => Some("paper-conference"),
+        T::MastersThesis | T::PhdThesis | T::Thesis => Some("thesis"),
+        T::TechReport | T::Report => Some("report"),
+        T::Online => Some("webpage"),
+        T::Software => Some("software"),
+        T::Dataset => Some("dataset"),
+        T::Patent => Some("patent"),
+        _ => None,
+    }
+}
+
 /// Convert a Hayagriva Entry to a CSL-JSON serde_json::Value.
 ///
 /// This is the Entry → CSL-JSON direction (used by parsers).
@@ -294,6 +354,37 @@ fn merge_biblatex_extras(entries: &mut [Value], input: &str) {
         let Some(&idx) = index.get(key) else { continue };
         let bib_entry = &bib_entries[idx];
         let Some(obj) = entry_csl.as_object_mut() else { continue };
+
+        if let Some(csl_type) = biblatex_type_to_csl(bib_entry) {
+            obj.insert("type".into(), json!(csl_type));
+        }
+
+        insert_string_if_missing(
+            obj,
+            "container-title",
+            bib_field(bib_entry, &["journaltitle", "journal", "booktitle", "eventtitle"]),
+        );
+        insert_string_if_missing(obj, "event-title", bib_field(bib_entry, &["eventtitle"]));
+        insert_string_if_missing(obj, "publisher-place", bib_field(bib_entry, &["location", "address"]));
+        insert_string_if_missing(
+            obj,
+            "publisher",
+            bib_field(bib_entry, &["publisher", "institution", "school"]),
+        );
+        insert_string_if_missing(obj, "volume", bib_field(bib_entry, &["volume"]));
+        insert_string_if_missing(obj, "issue", bib_field(bib_entry, &["number", "issue"]));
+        insert_string_if_missing(obj, "page", bib_field(bib_entry, &["pages"]));
+        insert_string_if_missing(obj, "URL", bib_field(bib_entry, &["url"]));
+        insert_string_if_missing(obj, "DOI", bib_field(bib_entry, &["doi"]));
+        insert_string_if_missing(obj, "version", bib_field(bib_entry, &["version"]));
+
+        if !obj.contains_key("accessed") {
+            if let Some(date) = bib_field(bib_entry, &["urldate"]) {
+                if let Some(date_parts) = date_parts_from_isoish(&date) {
+                    obj.insert("accessed".into(), date_parts);
+                }
+            }
+        }
 
         // keywords: CSL uses `keyword` (singular, comma-separated string per v1.0 schema)
         if !obj.contains_key("keyword") {
@@ -583,6 +674,84 @@ mod tests {
         assert_eq!(third["type"], "article-journal");
         assert_eq!(third["container-title"], "Old Journal");
         assert_eq!(third["keyword"], "legacy");
+    }
+
+    #[test]
+    fn test_parse_biblatex_article_fields() {
+        let input = r#"@article{smith2023,
+  author = {Smith, Jane},
+  title = {Deep Learning},
+  journaltitle = {Nature},
+  date = {2023-05-17},
+  volume = {617},
+  number = {7960},
+  pages = {100--115},
+  doi = {10.1038/s41586-023-12345},
+}"#;
+        let result = parse_bibtex(input, &ParseOptions::default());
+
+        assert_eq!(result.entries.len(), 1, "expected one entry: {:?}", result.errors);
+        let first = &result.entries[0];
+        assert_eq!(first["type"], "article-journal");
+        assert_eq!(first["title"], "Deep Learning");
+        assert_eq!(first["container-title"], "Nature");
+        assert_eq!(first["issued"]["date-parts"][0][0], 2023);
+        assert_eq!(first["volume"], "617");
+        assert_eq!(first["issue"], "7960");
+        assert_eq!(first["page"], "100-115");
+        assert_eq!(first["DOI"], "10.1038/s41586-023-12345");
+    }
+
+    #[test]
+    fn test_parse_biblatex_conference_event_and_location() {
+        let input = r#"@inproceedings{foo2022,
+  author = {Foo, A.},
+  title = {Talk Title},
+  eventtitle = {NeurIPS 2022},
+  booktitle = {Proceedings of NeurIPS},
+  date = {2022-12},
+  location = {New Orleans},
+}"#;
+        let result = parse_bibtex(input, &ParseOptions::default());
+
+        assert_eq!(result.entries.len(), 1, "expected one entry: {:?}", result.errors);
+        let first = &result.entries[0];
+        assert_eq!(first["type"], "paper-conference");
+        assert_eq!(first["container-title"], "Proceedings of NeurIPS");
+        assert_eq!(first["event-title"], "NeurIPS 2022");
+        assert_eq!(first["publisher-place"], "New Orleans");
+    }
+
+    #[test]
+    fn test_parse_biblatex_dataset_and_software_types() {
+        let input = r#"@dataset{data2023,
+  author = {Lab, Some},
+  title = {Dataset X},
+  publisher = {Zenodo},
+  date = {2023},
+  doi = {10.5281/zenodo.1234567},
+}
+
+@software{tool2024,
+  author = {Dev Team},
+  title = {A Tool},
+  version = {1.2.0},
+  date = {2024-03-01},
+  url = {https://github.com/x/y},
+}"#;
+        let result = parse_bibtex(input, &ParseOptions::default());
+
+        assert_eq!(result.entries.len(), 2, "expected two entries: {:?}", result.errors);
+        let dataset = &result.entries[0];
+        assert_eq!(dataset["type"], "dataset");
+        assert_eq!(dataset["DOI"], "10.5281/zenodo.1234567");
+        assert_eq!(dataset["publisher"], "Zenodo");
+
+        let software = &result.entries[1];
+        assert_eq!(software["type"], "software");
+        assert_eq!(software["title"], "A Tool");
+        assert_eq!(software["URL"], "https://github.com/x/y");
+        assert_eq!(software["version"], "1.2.0");
     }
 
     #[test]
