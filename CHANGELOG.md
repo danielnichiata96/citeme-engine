@@ -7,6 +7,14 @@ and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
 ## [0.3.4] — 2026-06-12
 
+### Fixed
+- `init`/`createEngine` no longer trigger wasm-bindgen's
+  `using deprecated parameters for the initialization function` console
+  warning when called with a raw input (bytes, URL, string) instead of a
+  `{ module_or_path }` object. The package wrapper now normalizes the
+  argument itself — previously every serverless cold start logged the
+  warning.
+
 ### Added
 - **Versioned result-shape contract.** New `resultShapeVersion()` export
   (module-level, also re-exported from the package root) returns the version
@@ -32,6 +40,14 @@ and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 - `locales-pt-PT.xml` test fixture (completes the CiteMe locale set).
 
 ### Notes
+- **iso690-fr renders without aborting, but output parity with citation-js
+  is NOT claimed.** Hayagriva currently drops the standalone
+  `<text term="and"/>` between the patent dates and renders months
+  numerically, producing e.g. `…le 3 2 2021publié…` (missing separator,
+  numeric month) — upstream rendering gaps, not the 0.3.3 normalizer fix.
+  Consumers switching this style from a fallback formatter to the Wasm
+  engine should gate on an output comparison first; the no-abort guarantee
+  holds regardless.
 - README gained an "Error semantics across the Wasm boundary" section:
   expected failures are `Err`/`JsError` and never poison the instance; Rust
   panics abort and *cannot* be converted to `Err` on this target, so the
