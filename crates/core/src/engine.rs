@@ -93,6 +93,23 @@ impl CitationEngine {
         }
     }
 
+    /// Reject format calls that name a locale we never loaded.
+    ///
+    /// Hayagriva renders happily with an unresolvable locale, silently
+    /// dropping every locale term (long month names, "and", "n.d.", …) —
+    /// e.g. "Brevet déposé le 3 2 2021publié…" instead of
+    /// "…le 3 février 2021 et publié…". That degraded output looks like a
+    /// rendering bug but is a wiring bug; fail loudly instead. The empty
+    /// string stays permitted as the explicit "use the style's
+    /// default-locale against whatever is loaded" escape hatch.
+    fn ensure_locale_available(&self, locale_code: &str) -> Result<(), EngineError> {
+        if locale_code.is_empty() || self.has_locale(locale_code) {
+            Ok(())
+        } else {
+            Err(EngineError::LocaleNotLoaded(locale_code.into()))
+        }
+    }
+
     /// Format a single CSL-JSON item.
     ///
     /// The CSL-JSON string is deserialized into a `citationberg::json::Item`
@@ -107,6 +124,7 @@ impl CitationEngine {
     ) -> Result<FormatResult, EngineError> {
         let style = self.styles.get(style_name)
             .ok_or_else(|| EngineError::StyleNotLoaded(style_name.into()))?;
+        self.ensure_locale_available(locale_code)?;
 
         // Parse CSL-JSON string into citationberg::json::Item
         // This uses the csl-json feature — Item implements EntryLike
@@ -182,6 +200,7 @@ impl CitationEngine {
     ) -> Result<Vec<FormatResult>, EngineError> {
         let style = self.styles.get(style_name)
             .ok_or_else(|| EngineError::StyleNotLoaded(style_name.into()))?;
+        self.ensure_locale_available(locale_code)?;
 
         let mut items: Vec<serde_json::Value> = serde_json::from_str(csl_json_array_str)
             .map_err(|e| EngineError::InvalidCslJson(format!("{e}")))?;
@@ -410,6 +429,36 @@ mod tests {
         let engine = CitationEngine::new();
         let result = engine.format_one("{}", "nonexistent", "en-US", &FormatOptions::default());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_format_one_unloaded_locale_errors() {
+        // Formatting with a locale code that was never loaded used to render
+        // silently with NO locale terms at all — numeric months, empty `and`
+        // term ("Brevet déposé le 3 2 2021publié…"), the exact output that
+        // failed CiteMe's iso690-fr parity gate. It must be a loud error.
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let csl_json = r#"{"type":"book","title":"T","issued":{"date-parts":[[2024]]}}"#;
+        let result = engine.format_one(csl_json, "apa", "fr-FR", &FormatOptions::default());
+        assert!(
+            matches!(result, Err(EngineError::LocaleNotLoaded(ref code)) if code == "fr-FR"),
+            "expected LocaleNotLoaded(fr-FR), got: {result:?}"
+        );
+
+        // The batch path takes the same guard — even for an empty batch.
+        let result = engine.format_batch("[]", "apa", "fr-FR", &FormatOptions::default());
+        assert!(
+            matches!(result, Err(EngineError::LocaleNotLoaded(_))),
+            "batch must take the same guard, got: {result:?}"
+        );
+
+        // Empty code stays the explicit escape hatch: "let the style's
+        // default-locale pick among the loaded files".
+        let result = engine.format_one(csl_json, "apa", "", &FormatOptions::default());
+        assert!(result.is_ok(), "empty locale code must remain permitted: {result:?}");
     }
 
     #[test]

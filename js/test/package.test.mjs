@@ -146,6 +146,25 @@ test('loadStyle survives multibyte chars in CSL attributes (iso690-fr regression
   assert.ok(result.reference.length > 0, 'reference should not be empty');
 });
 
+test('formatting with an unloaded locale throws cleanly instead of dropping terms', async () => {
+  // 0.3.4 and earlier rendered with ZERO locale terms when the requested
+  // locale was never loaded (numeric months, missing "and" — the output that
+  // failed CiteMe's iso690-fr parity gate). 0.3.5 makes it a clean JsError.
+  const engine = await createEngine({ module_or_path: await wasmBytesPromise });
+  engine.loadStyle('apa', await stylePromise);
+  engine.loadLocale('en-US', await localePromise);
+
+  const book = JSON.stringify({ type: 'book', title: 'T', issued: { 'date-parts': [[2024]] } });
+  assert.throws(
+    () => engine.formatOne(book, 'apa', 'fr-FR', false),
+    /locale 'fr-FR' not loaded/,
+  );
+
+  // Clean Err semantics: the instance is NOT poisoned.
+  const ok = JSON.parse(engine.formatOne(book, 'apa', 'en-US', false));
+  assert.ok(ok.reference.length > 0, 'engine must stay usable after the error');
+});
+
 test('formatOneWithOutput supports plain output', async () => {
   const engine = await createEngine({ module_or_path: await wasmBytesPromise });
   engine.loadStyle('apa', await stylePromise);
