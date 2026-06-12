@@ -132,15 +132,15 @@ fn find_tag_end(s: &str) -> Option<usize> {
 /// opening tag, returning the rewritten tag and the extracted delimiter value.
 fn strip_delimiter_attr(tag: &str) -> (String, Option<String>) {
     let bytes = tag.as_bytes();
-    let mut i = 0usize;
-    while i + "delimiter".len() < bytes.len() {
-        if !tag[i..].starts_with("delimiter") {
-            i += 1;
-            continue;
-        }
+    let mut search_from = 0usize;
+    // Scan with `find` so every index lands on a char boundary — the tag may
+    // contain multibyte chars in other attribute values (e.g. iso690-fr's
+    // `prefix="Brevet déposé le "`).
+    while let Some(rel) = tag[search_from..].find("delimiter") {
+        let i = search_from + rel;
         let key_end = i + "delimiter".len();
+        search_from = key_end;
         if i > 0 && !is_attr_boundary(bytes[i - 1]) {
-            i += 1;
             continue;
         }
         let after_key = &tag[key_end..];
@@ -148,7 +148,6 @@ fn strip_delimiter_attr(tag: &str) -> (String, Option<String>) {
         let ws_skipped = after_key.len() - after_trim.len();
         let rest_after_key = &tag[key_end + ws_skipped..];
         if !rest_after_key.starts_with('=') {
-            i += 1;
             continue;
         }
         let after_eq = &rest_after_key[1..];
@@ -157,7 +156,6 @@ fn strip_delimiter_attr(tag: &str) -> (String, Option<String>) {
         let quote_pos = key_end + ws_skipped + 1 + ws_after_eq;
         let quote = bytes.get(quote_pos).copied();
         if quote != Some(b'"') && quote != Some(b'\'') {
-            i += 1;
             continue;
         }
         let value_start = quote_pos + 1;
@@ -356,6 +354,25 @@ mod tests {
     fn leaves_non_matching_elements_alone() {
         let xml = r#"<text variable="issued" delimiter=" "/>"#;
         assert_eq!(normalize_csl_xml(xml), xml);
+    }
+
+    #[test]
+    fn handles_multibyte_chars_in_date_attributes() {
+        // Regression: iso690-author-date-fr.csl has
+        // `<date variable="submitted" prefix="Brevet déposé le ">`. The `é`
+        // is multibyte; scanning the tag for a `delimiter` attribute must not
+        // slice mid-character.
+        let xml = "<date variable=\"submitted\" prefix=\"Brevet d\u{e9}pos\u{e9} le \">\n  <date-part name=\"day\"/>\n  <date-part name=\"year\"/>\n</date>";
+        assert_eq!(normalize_csl_xml(xml), xml);
+    }
+
+    #[test]
+    fn rewrites_delimiter_on_tag_with_multibyte_attribute() {
+        let xml = "<date prefix=\"d\u{e9}pos\u{e9} le \" delimiter=\" \">\n  <date-part name=\"year\"/>\n  <date-part name=\"month\"/>\n</date>";
+        let out = normalize_csl_xml(xml);
+        assert!(!out.contains("delimiter="), "delimiter stripped: {out}");
+        assert!(out.contains("prefix=\"d\u{e9}pos\u{e9} le \""), "date prefix preserved: {out}");
+        assert!(out.contains(r#"<date-part name="month" prefix=" "/>"#), "month gets prefix: {out}");
     }
 
     #[test]

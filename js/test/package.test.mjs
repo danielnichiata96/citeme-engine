@@ -95,6 +95,35 @@ LID - 10.1038/s41598-026-40798-8 [doi]
   assert.equal(result.entries[0]['container-title'], 'Scientific reports');
 });
 
+test('loadStyle survives multibyte chars in CSL attributes (iso690-fr regression)', async () => {
+  // 0.3.2 panicked (Wasm abort) while normalizing iso690-author-date-fr's
+  // `<date … prefix="Brevet déposé le ">` — multibyte char in a <date> tag.
+  const engine = await createEngine({ module_or_path: await wasmBytesPromise });
+  const styleXml = await readFile(
+    new URL('../../tests/fixtures/styles/iso690-author-date-fr.csl', import.meta.url),
+    'utf8',
+  );
+  const localeXml = await readFile(
+    new URL('../../tests/fixtures/locales/locales-fr-FR.xml', import.meta.url),
+    'utf8',
+  );
+
+  engine.loadStyle('iso690-author-date-fr', styleXml);
+  engine.loadLocale('fr-FR', localeXml);
+
+  const patent = JSON.stringify({
+    type: 'patent',
+    title: 'Dispositif de chiffrement',
+    author: [{ family: 'Dupont', given: 'Marie' }],
+    submitted: { 'date-parts': [[2019, 3, 14]] },
+    issued: { 'date-parts': [[2021, 7, 2]] },
+    number: 'FR3094000',
+  });
+
+  const result = JSON.parse(engine.formatOne(patent, 'iso690-author-date-fr', 'fr-FR', false));
+  assert.ok(result.reference.length > 0, 'reference should not be empty');
+});
+
 test('formatOneWithOutput supports plain output', async () => {
   const engine = await createEngine({ module_or_path: await wasmBytesPromise });
   engine.loadStyle('apa', await stylePromise);

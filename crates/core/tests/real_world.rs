@@ -234,3 +234,29 @@ fn test_real_bibtex_multi_style() {
         }
     }
 }
+
+// ─── iso690-author-date-fr regression (multibyte attr panic, 0.3.2) ───
+
+#[test]
+fn test_iso690_fr_style_loads_and_formats() {
+    // The style has `<date … prefix="Brevet déposé le ">` — a multibyte char
+    // inside a <date> opening tag. In 0.3.2 the CSL normalizer panicked while
+    // scanning that tag for a `delimiter` attribute (byte-indexed slice landing
+    // mid-character). Loading and formatting must never panic.
+    let engine = setup_engine();
+    assert!(engine.has_style("iso690-author-date-fr"), "fixture should load");
+
+    let patent = r#"{
+        "type": "patent",
+        "title": "Dispositif de chiffrement",
+        "author": [{ "family": "Dupont", "given": "Marie" }],
+        "submitted": { "date-parts": [[2019, 3, 14]] },
+        "issued": { "date-parts": [[2021, 7, 2]] },
+        "number": "FR3094000"
+    }"#;
+
+    let result = engine.format_one(patent, "iso690-author-date-fr", "fr-FR", &FormatOptions::default());
+    let fmt = result.expect("formatting must return Ok or a clean Err, never panic");
+    println!("\n=== iso690-author-date-fr patent ===\n  ref: {}\n  in-text: {}", fmt.reference, fmt.in_text);
+    assert!(!fmt.reference.is_empty(), "reference should not be empty");
+}
