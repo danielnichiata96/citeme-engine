@@ -1,6 +1,6 @@
 [package]
 name = "citeme-engine-core"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 
 [dependencies]
@@ -13,6 +13,7 @@ unicode-normalization = "0.1"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1"
 
 [[bench]]
 name = "citeme_bench"

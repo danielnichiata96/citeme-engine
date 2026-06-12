@@ -27,6 +27,39 @@ const result = JSON.parse(engine.formatOne(cslJsonStr, 'apa', 'en-US', false));
 
 Powered by [Hayagriva](https://github.com/typst/hayagriva) v0.9.1 with the `csl-json` feature for direct CSL-JSON formatting.
 
+## Error semantics across the Wasm boundary
+
+Two distinct failure modes, with different blast radii:
+
+- **Expected failures return `Err`.** Every fallible API (`loadStyle`,
+  `formatOne`, `parse*`, `export*`, …) returns `Result<_, JsError>` — invalid
+  XML, malformed JSON, unknown style names, unsupported output formats all
+  surface as ordinary JS exceptions with a message. The engine instance stays
+  healthy; just catch and continue.
+- **A Rust panic aborts the instance — and cannot be caught at the
+  boundary.** This crate builds with `panic = "abort"`, and
+  `wasm32-unknown-unknown` has no unwinding anyway, so `catch_unwind`-style
+  conversion to `Err` is not possible on this target. A panic reaches JS as a
+  `RuntimeError: unreachable` and poisons the `WasmCitationEngine`; the only
+  recovery is re-instantiating the module.
+
+Because the second mode can't be intercepted, the engine's guarantee is to
+make it **unreachable** rather than catchable, enforced in CI:
+
+- `crates/core/tests/no_panic_props.rs` — property tests asserting no
+  arbitrary input (including multibyte/XML-ish adversarial strings) panics
+  the normalizer, parsers, or exporters.
+- `crates/core/tests/corpus_smoke.rs` — every CSL style CiteMe serves in
+  production (`tests/fixtures/styles/corpus/`) must load and format a
+  battery of items in all supported locales.
+
+Consumers may keep a last-resort "reset engine on `RuntimeError`" guard as
+defense in depth, but as of 0.3.4 it is expected to be dead code.
+
+To assert the JSON contract once at boot instead of per call, compare
+`resultShapeVersion()` against the version your schemas were written for
+(currently `1`).
+
 ## Export compatibility notes (vs citation-js)
 
 The BibTeX/RIS exporters intentionally do **not** reproduce citation-js
