@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import initDefault, { init, createEngine, WasmCitationEngine } from '../index.js';
+import initDefault, { init, createEngine, resultShapeVersion, WasmCitationEngine } from '../index.js';
 
 const wasmBytesPromise = readFile(new URL('../pkg/citeme_engine_wasm_bg.wasm', import.meta.url));
 const localePromise = readFile(
@@ -93,6 +93,28 @@ LID - 10.1038/s41598-026-40798-8 [doi]
   assert.equal(result.entries.length, 1);
   assert.equal(result.entries[0].title, 'A normalized MEDLINE title.');
   assert.equal(result.entries[0]['container-title'], 'Scientific reports');
+});
+
+test('resultShapeVersion pins the result-JSON contract at init time', async () => {
+  const engine = await createEngine({ module_or_path: await wasmBytesPromise });
+
+  // Consumers assert this once at boot; bumping it is a contract change.
+  assert.equal(resultShapeVersion(), 1);
+
+  // Pin the shape the version covers, exactly as the boundary serializes it.
+  engine.loadStyle('apa', await stylePromise);
+  engine.loadLocale('en-US', await localePromise);
+  const formatted = JSON.parse(engine.formatOne(
+    JSON.stringify({ type: 'book', title: 'T', author: [{ family: 'X' }], issued: { 'date-parts': [[2024]] } }),
+    'apa', 'en-US', false,
+  ));
+  assert.deepEqual(Object.keys(formatted).sort(), ['inText', 'reference']);
+
+  const parsed = JSON.parse(engine.parseBibtex('@book{k, title={T}, author={X}, year={2024}}'));
+  assert.deepEqual(
+    Object.keys(parsed).sort(),
+    ['entries', 'errors', 'format', 'scannedEntries', 'truncated'],
+  );
 });
 
 test('loadStyle survives multibyte chars in CSL attributes (iso690-fr regression)', async () => {

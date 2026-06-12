@@ -1,6 +1,17 @@
 use wasm_bindgen::prelude::*;
 use citeme_engine_core::engine::CitationEngine;
-use citeme_engine_core::types::{FormatOptions, OutputFormat};
+use citeme_engine_core::types::{FormatOptions, OutputFormat, RESULT_SHAPE_VERSION};
+
+/// Version of every JSON shape this module returns (FormatResult,
+/// ParseResult, …). Consumers that validate the engine's JSON against their
+/// own schemas should assert this ONCE at init — an incompatible shape change
+/// then fails loudly at boot instead of as per-call validation errors.
+/// Bumped on any incompatible change to a returned shape; see
+/// `citeme_engine_core::types::RESULT_SHAPE_VERSION` for the covered shapes.
+#[wasm_bindgen(js_name = "resultShapeVersion")]
+pub fn result_shape_version() -> u32 {
+    RESULT_SHAPE_VERSION
+}
 
 fn parse_output_format(output_format: &str) -> Result<OutputFormat, JsError> {
     match output_format.trim().to_ascii_lowercase().as_str() {

@@ -4,6 +4,14 @@ import type { InitInput, InitOutput, WasmCitationEngine } from './pkg/citeme_eng
 export { WasmCitationEngine } from './pkg/citeme_engine_wasm.js';
 export type { InitInput, InitOutput } from './pkg/citeme_engine_wasm.js';
 
+/**
+ * Version of every JSON shape the engine returns (FormatResult, ParseResult, …).
+ * Assert this once right after init — an incompatible shape change in a future
+ * engine version then fails loudly at boot instead of as per-call schema
+ * validation errors. Requires the Wasm module to be initialized.
+ */
+export declare function resultShapeVersion(): number;
+
 export interface FormatResult {
   reference: string;
   inText: string;

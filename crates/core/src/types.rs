@@ -1,5 +1,24 @@
 use serde::{Deserialize, Serialize};
 
+/// Version of every JSON shape returned across the public API boundary.
+///
+/// Consumers deserialize the engine's JSON output against their own schemas
+/// (the CiteMe app validates with Zod per call). This constant lets them
+/// assert compatibility ONCE at engine init — drift becomes a loud boot
+/// failure instead of per-call validation noise.
+///
+/// Covered shapes (bump this when any of them changes incompatibly —
+/// renamed/removed/retyped fields; adding a NEW OPTIONAL field is not a bump
+/// for tolerant readers, but strict-schema consumers should be notified in
+/// the changelog):
+/// - `FormatResult` → `{ "reference": string, "inText": string }`
+///   (and arrays of it from the batch methods)
+/// - `ParseResult` → `{ "entries": object[], "errors": {"preview","error"}[],
+///   "format": string, "truncated": bool, "scannedEntries": number }`
+///
+/// The Wasm boundary exposes this as `resultShapeVersion()`.
+pub const RESULT_SHAPE_VERSION: u32 = 1;
+
 /// Output of a citation formatting operation.
 /// Matches CiteMe's `SimpleCitation` type in TypeScript.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,4 +58,53 @@ pub enum OutputFormat {
     Html,
     /// Plain text (no markup)
     Plain,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Pins the exact serialized shape covered by RESULT_SHAPE_VERSION.
+    /// If this test needs editing, RESULT_SHAPE_VERSION must be bumped and
+    /// the change called out in the CHANGELOG.
+    #[test]
+    fn format_result_shape_is_pinned_to_shape_version() {
+        let result = FormatResult {
+            reference: "ref".into(),
+            in_text: "txt".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&result).unwrap(),
+            json!({ "reference": "ref", "inText": "txt" }),
+            "FormatResult JSON shape changed — bump RESULT_SHAPE_VERSION"
+        );
+        assert_eq!(RESULT_SHAPE_VERSION, 1);
+    }
+
+    /// Same pin for ParseResult (returned by all parse* boundary methods).
+    #[test]
+    fn parse_result_shape_is_pinned_to_shape_version() {
+        let result = crate::parsers::ParseResult {
+            entries: vec![json!({"type": "book"})],
+            errors: vec![crate::parsers::ParseErrorInfo {
+                preview: "p".into(),
+                error: "e".into(),
+            }],
+            format: "bibtex".into(),
+            truncated: false,
+            scanned_entries: 1,
+        };
+        assert_eq!(
+            serde_json::to_value(&result).unwrap(),
+            json!({
+                "entries": [{"type": "book"}],
+                "errors": [{"preview": "p", "error": "e"}],
+                "format": "bibtex",
+                "truncated": false,
+                "scannedEntries": 1
+            }),
+            "ParseResult JSON shape changed — bump RESULT_SHAPE_VERSION"
+        );
+    }
 }

@@ -1,5 +1,5 @@
 // js/index.js
-import initWasm, { WasmCitationEngine } from './pkg/citeme_engine_wasm.js';
+import initWasm, { WasmCitationEngine, resultShapeVersion } from './pkg/citeme_engine_wasm.js';
 
 let initPromise = null;
 
@@ -21,4 +21,4 @@ export async function createEngine(moduleOrPath) {
 }
 
 export default init;
-export { WasmCitationEngine };
+export { WasmCitationEngine, resultShapeVersion };
