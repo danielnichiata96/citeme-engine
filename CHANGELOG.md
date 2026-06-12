@@ -5,6 +5,36 @@ All notable changes to `citeme-engine` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [0.3.3] — 2026-06-12
+
+### Fixed
+- **CSL normalizer no longer panics on styles with multibyte characters in
+  attribute values** (e.g. `iso690-author-date-fr`'s
+  `<date … prefix="Brevet déposé le ">`). The `delimiter` attribute scanner
+  advanced byte-by-byte and could slice mid-character, aborting across the
+  Wasm boundary on `loadStyle`. Scanning is now char-boundary-safe; the real
+  style is a test fixture and loads/formats cleanly.
+
+### Added
+- **Exports map now supports path resolution from any module system.**
+  `js/package.json` adds `"./package.json"` and
+  `"./pkg/citeme_engine_wasm_bg.wasm"` subpaths plus a `"default"` condition
+  on `"."`, so `require.resolve('citeme-engine-wasm')`,
+  `require.resolve('citeme-engine-wasm/pkg/citeme_engine_wasm_bg.wasm')` and
+  the `import.meta.resolve` equivalents all work — no more
+  `ERR_PACKAGE_PATH_NOT_EXPORTED` / filesystem walk-ups in consumers.
+  Additive; existing `import` resolution is unchanged.
+
+### Notes
+- Evaluated matching citation-js "brace-cleaning" in the BibTeX/RIS
+  exporters; declined. On import both engines already strip case-protection
+  braces identically, so nothing leaks into RIS. On BibTeX export,
+  citation-js *adds* case-protection braces around capitalized words and
+  rewrites non-ASCII text as LaTeX escapes — opinionated conventions (and
+  typographically questionable, e.g. `{\' i}`) that would silently change
+  output for existing consumers. The divergence is documented in the README
+  ("Export compatibility notes") instead.
+
 ## [0.3.2] — 2026-05-03
 
 ### Added

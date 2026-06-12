@@ -5,7 +5,7 @@
     "type": "git",
     "url": "https://github.com/danielnichiata96/citeme-engine"
   },
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "High-performance citation formatting engine powered by Rust/Wasm",
   "type": "module",
   "main": "index.js",
@@ -23,9 +23,12 @@
   ],
   "exports": {
     ".": {
+      "types": "./index.d.ts",
       "import": "./index.js",
-      "types": "./index.d.ts"
-    }
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json",
+    "./pkg/citeme_engine_wasm_bg.wasm": "./pkg/citeme_engine_wasm_bg.wasm"
   },
   "keywords": [
     "citation",
