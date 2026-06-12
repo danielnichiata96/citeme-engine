@@ -5,6 +5,40 @@ All notable changes to `citeme-engine` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [0.3.4] — 2026-06-12
+
+### Added
+- **Versioned result-shape contract.** New `resultShapeVersion()` export
+  (module-level, also re-exported from the package root) returns the version
+  of every JSON shape the engine emits (`FormatResult`, `ParseResult`, …) —
+  currently `1`. Consumers that validate engine output against their own
+  schemas can assert it once at init, turning shape drift into a loud boot
+  failure instead of per-call validation errors. The exact serialized shapes
+  are pinned by unit tests in `crates/core/src/types.rs`; editing those tests
+  requires bumping `RESULT_SHAPE_VERSION`.
+- **Production-corpus smoke test.** `tests/fixtures/styles/corpus/` snapshots
+  all 59 CSL styles the CiteMe app serves; CI loads every one and formats a
+  battery of representative items (multibyte text, patent `submitted` dates,
+  literal authors, missing fields) in all 7 supported locales. A style edge
+  case now fails engine CI instead of consumer production.
+- **Anti-panic property tests.** Proptest suites assert that no arbitrary
+  input — including adversarial XML-ish strings heavy on multibyte chars —
+  can panic the CSL normalizer, any parser, or any exporter. This is the
+  class-level defense for the bug fixed in 0.3.3 (panics cross the Wasm
+  boundary as instance-poisoning aborts and cannot be caught on
+  `wasm32-unknown-unknown`).
+- **GitHub Actions CI** running the full Rust workspace suite plus a real
+  Wasm build with the JS package tests.
+- `locales-pt-PT.xml` test fixture (completes the CiteMe locale set).
+
+### Notes
+- README gained an "Error semantics across the Wasm boundary" section:
+  expected failures are `Err`/`JsError` and never poison the instance; Rust
+  panics abort and *cannot* be converted to `Err` on this target, so the
+  engine's guarantee is making them unreachable (enforced by the corpus and
+  property suites). Consumer-side reset guards are expected to be dead code
+  from this release on.
+
 ## [0.3.3] — 2026-06-12
 
 ### Fixed
