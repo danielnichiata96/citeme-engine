@@ -33,9 +33,11 @@ Two distinct failure modes, with different blast radii:
 
 - **Expected failures return `Err`.** Every fallible API (`loadStyle`,
   `formatOne`, `parse*`, `export*`, …) returns `Result<_, JsError>` — invalid
-  XML, malformed JSON, unknown style names, unsupported output formats all
-  surface as ordinary JS exceptions with a message. The engine instance stays
-  healthy; just catch and continue.
+  XML, malformed JSON, unknown style names, unloaded locales (since 0.3.5 —
+  formatting with a locale you never loaded would otherwise silently drop
+  every locale term), unsupported output formats all surface as ordinary JS
+  exceptions with a message. The engine instance stays healthy; just catch
+  and continue.
 - **A Rust panic aborts the instance — and cannot be caught at the
   boundary.** This crate builds with `panic = "abort"`, and
   `wasm32-unknown-unknown` has no unwinding anyway, so `catch_unwind`-style

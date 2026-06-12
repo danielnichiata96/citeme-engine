@@ -5,6 +5,43 @@ All notable changes to `citeme-engine` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [0.3.5] — 2026-06-12
+
+### Changed
+- **Formatting with an unloaded locale is now a loud error instead of
+  silently wrong output.** `formatOne`/`formatBatch` (and the prose/output
+  variants) return `EngineError::LocaleNotLoaded` → `JsError` when
+  `locale_code` names a locale that was never passed to `loadLocale`.
+  Previously hayagriva rendered with **zero locale terms** — numeric months,
+  missing `and`/`n.d.` terms — producing exactly the
+  `Brevet déposé le 3 2 2021publié le 10 5 2023` output that failed CiteMe's
+  iso690-fr parity gate on 2026-06-12. Root-cause analysis showed the
+  engine's rendering was correct all along *when the locale file is
+  actually loaded* (`…le 3 février 2021 et publié le 10 mai 2023`); the
+  broken output only reproduces with no matching locale available, so the
+  silent degradation, not the renderer, was the defect. The empty string
+  (`""`) remains the explicit escape hatch ("use the style's
+  default-locale against whatever is loaded").
+  **Migration:** load every locale you reference before formatting. CiteMe
+  specifically: the parity-gate harness must `loadLocale` the 6 locales the
+  adapter preloads, and `np405` (locale `pt-PT`) needs `pt-PT` added to
+  `PRELOAD_LOCALES` — today it silently falls back to English terms.
+
+### Added
+- Parity regression tests pinning locale-term resolution: the patent
+  fixture through `iso690-author-date-fr` × `fr-FR` must contain
+  `3 février 2021` and ` et publié le ` (NBSP-normalized — the style joins
+  date-parts with `&#160;`), and `plos` × `pt-BR` must render
+  `10 de maio de 2023` / `3 de fevereiro de 2024`, proving long-form month
+  terms are not iso690-local.
+
+### Notes
+- `RESULT_SHAPE_VERSION` is unchanged (errors are exceptions, not result
+  JSON; no returned shape changed).
+- Supersedes the 0.3.4 note that blamed hayagriva for dropped `and` terms
+  and numeric months — hayagriva 0.9 renders both correctly given a loaded
+  locale; no upstream patch needed.
+
 ## [0.3.4] — 2026-06-12
 
 ### Fixed
