@@ -1,2 +1,5 @@
 target/
 js/pkg/
+*.tgz
+.DS_Store
+.vscode/

@@ -6,8 +6,12 @@ Exercised by `crates/core/tests/corpus_smoke.rs`: every style must load and
 format a battery of items in every supported locale without panicking, so a
 style edge case fails the engine's CI instead of CiteMe's production.
 
-To refresh after the app adds/changes styles:
+To check for drift (run before every release) or refresh:
 
-    find <citeme-repo>/public/csl -name '*.csl' -exec cp {} tests/fixtures/styles/corpus/ \;
+    scripts/sync-corpus.sh [--write] [path-to-citeme-checkout]
 
-Last synced: 2026-06-12.
+Check mode exits 1 on missing/stale/orphaned styles; `--write` syncs and
+removes orphans, then re-run `cargo test -p citeme-engine-core --test
+corpus_smoke`.
+
+Last synced: 2026-07-09 (in sync, 59 styles).
