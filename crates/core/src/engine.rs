@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use serde::Deserialize;
+
 use hayagriva::citationberg::{IndependentStyle, LocaleFile, Locale, Style};
 use hayagriva::{BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest, CitePurpose};
 
@@ -219,15 +221,37 @@ impl CitationEngine {
             }
         }
 
+        // Disambiguate DISTINCT items that share an id — they would collide
+        // in the bibliography key lookup and all render the first item's
+        // reference. Identical duplicates keep their shared id: the same
+        // entry cited twice is one bibliography entry, and splitting it
+        // would trigger spurious year-suffix disambiguation ("2024a"/"b").
+        let mut first_occurrence: HashMap<String, usize> = HashMap::new();
+        for i in 0..items.len() {
+            let id = items[i]["id"].as_str().unwrap_or_default().to_string();
+            match first_occurrence.get(&id) {
+                None => {
+                    first_occurrence.insert(id, i);
+                }
+                Some(&first) if items[first] != items[i] => {
+                    if let Some(obj) = items[i].as_object_mut() {
+                        obj.insert("id".to_string(), serde_json::Value::String(format!("_citeme_batch_dup_{i}")));
+                    }
+                }
+                Some(_) => {}
+            }
+        }
+
         let locale = self.resolve_locale(locale_code);
         let buf_format = match options.output_format {
             OutputFormat::Html => BufWriteFormat::Html,
             OutputFormat::Plain => BufWriteFormat::Plain,
         };
 
-        // Parse all items
+        // Parse all items — deserialize from &Value (no per-item clone;
+        // `items` stays owned for the rare empty-output fallback below).
         let parsed_items: Vec<hayagriva::citationberg::json::Item> = items.iter()
-            .map(|v| serde_json::from_value(v.clone())
+            .map(|v| hayagriva::citationberg::json::Item::deserialize(v)
                 .map_err(|e| EngineError::InvalidCslJson(format!("{e}"))))
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -577,6 +601,70 @@ mod tests {
         assert!(!results[1].reference.is_empty(), "second item reference should not be empty: {:?}", results[1]);
         assert!(results[0].reference.contains("Smith"), "first reference should contain Smith: {}", results[0].reference);
         assert!(results[1].reference.contains("Doe"), "second reference should contain Doe: {}", results[1].reference);
+    }
+
+    #[test]
+    fn test_format_batch_duplicate_ids_distinct_items() {
+        // Two DISTINCT items sharing an id must not collide in the
+        // bibliography key lookup — before the fix, both results carried
+        // the first item's reference.
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let csl_json_array = r#"[
+            {
+                "type": "article-journal",
+                "id": "shared",
+                "title": "First Paper",
+                "author": [{"family": "Smith", "given": "John"}],
+                "issued": {"date-parts": [[2024]]}
+            },
+            {
+                "type": "book",
+                "id": "shared",
+                "title": "A Great Book",
+                "author": [{"family": "Doe", "given": "Jane"}],
+                "issued": {"date-parts": [[2023]]}
+            }
+        ]"#;
+
+        let results = engine.format_batch(csl_json_array, "apa", "en-US", &FormatOptions::default()).unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].reference.contains("Smith"),
+            "first result must render the first item: {}", results[0].reference);
+        assert!(results[1].reference.contains("Doe"),
+            "second result must render the second item, not the first: {}", results[1].reference);
+        assert!(!results[1].reference.contains("Smith"),
+            "second result must not carry the first item's reference: {}", results[1].reference);
+    }
+
+    #[test]
+    fn test_format_batch_duplicate_ids_identical_items() {
+        // The SAME item cited twice under one id is one bibliography entry,
+        // not an ambiguity — both results must match and no year-suffix
+        // disambiguation ("2024a") may appear.
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let item = r#"{
+                "type": "article-journal",
+                "id": "same",
+                "title": "First Paper",
+                "author": [{"family": "Smith", "given": "John"}],
+                "issued": {"date-parts": [[2024]]}
+            }"#;
+        let csl_json_array = format!("[{item},{item}]");
+
+        let results = engine.format_batch(&csl_json_array, "apa", "en-US", &FormatOptions::default()).unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].reference, results[1].reference,
+            "identical duplicates must render identically");
+        assert!(!results[0].reference.contains("2024a"),
+            "identical duplicates must not trigger year-suffix disambiguation: {}", results[0].reference);
     }
 
     #[test]
