@@ -5,6 +5,29 @@ All notable changes to `citeme-engine` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [0.3.6] — 2026-07-09
+
+### Fixed
+- **Distinct batch items sharing an id no longer collide.** `formatBatch`
+  keyed its bibliography lookup by item id, so two *different* items that
+  arrived with the same user-supplied `id` both rendered the first item's
+  reference. Later occurrences of a duplicated id are now rewritten to a
+  synthetic id before formatting. Identical duplicates keep their shared
+  id — the same entry cited twice is one bibliography entry, and splitting
+  it would trigger spurious year-suffix disambiguation (`2024a`/`2024b`);
+  a regression test pins both behaviors.
+
+### Changed
+- `formatBatch` deserializes items from the parsed JSON tree directly
+  instead of cloning each item's full `serde_json::Value` — one less
+  full-tree clone per item on the hot path. No behavior change.
+
+### Notes
+- `RESULT_SHAPE_VERSION` is unchanged (no returned shape changed).
+- `citeme-engine-core`'s crate version now tracks the release version
+  (it had lagged at 0.3.4 through the 0.3.5 release); it is a path
+  dependency, so nothing observable changes for consumers.
+
 ## [0.3.5] — 2026-06-12
 
 ### Changed
