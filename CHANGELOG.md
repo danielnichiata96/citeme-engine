@@ -5,6 +5,42 @@ All notable changes to `citeme-engine` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [0.3.7] — 2026-07-22
+
+### Fixed
+- **BibTeX/BibLaTeX export no longer emits unparseable files.**
+  `escape_bibtex` now covers `{`, `}` and `\` (an unbalanced brace in a
+  title corrupted the entry and everything after it), and cite keys are
+  sanitized — commas, braces, parens, whitespace and other delimiter
+  chars in a CSL `id` become `_`; ids with no alphanumeric content fall
+  back to the derived author-year key. `export_validity` integration
+  tests now round-trip every exporter through the engine's own parser.
+- **Hayagriva export no longer emits YAML its own reader rejects.**
+  String quoting is whitelist-based: scalars YAML would type-coerce
+  (`true`, `null`, numbers) or that start/contain indicator chars
+  (`- `, `@`, `*`, `&`, `!`, `: `…) are double-quoted with full escape
+  coverage (backslash, quotes, control chars, newlines). `language`
+  values that are not plausible BCP-47 tags are omitted entirely —
+  hayagriva's `LanguageIdentifier` rejects junk even when quoted.
+- **`detectFormat` accepts any BibTeX entry type.** Detection now looks
+  for a generic `@word{` / `@word(` opener instead of a closed list of
+  17 types — `@dataset`, `@software` and custom biblatex types no
+  longer fall through to `unknown`. Bare `@` in prose still never
+  matches.
+
+### Changed
+- Parse error arrays are capped at `MAX_PARSE_ERRORS` (100) — hostile
+  input full of broken entries no longer balloons the result payload
+  (`max_entries` bounded successful output but not errors).
+- CI now enforces `cargo fmt --check` and `cargo clippy -D warnings`;
+  the workspace is warning-clean.
+- Added the `LICENSE` file (MIT — `package.json` already declared it).
+
+### Notes
+- `RESULT_SHAPE_VERSION` is unchanged (no returned shape changed).
+- Corpus re-synced with CiteMe (`harvard-cite-them-right.csl` had
+  drifted upstream).
+
 ## [0.3.6] — 2026-07-09
 
 ### Fixed
