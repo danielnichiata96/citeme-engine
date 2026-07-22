@@ -6,6 +6,12 @@ pub mod ris;
 
 use serde::{Deserialize, Serialize};
 
+/// Hard cap on collected parse errors. `max_entries` bounds successful
+/// output but not the error array — hostile input full of broken entries
+/// would otherwise balloon the result (each error carries an 80-char
+/// preview). Consumers only surface the first few errors anyway.
+pub const MAX_PARSE_ERRORS: usize = 100;
+
 /// Options for import parsers (includes DoS guards per spec §5.1).
 #[derive(Debug, Clone)]
 pub struct ParseOptions {

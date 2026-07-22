@@ -1,4 +1,4 @@
-use super::{ParseOptions, ParseResult, ParseErrorInfo};
+use super::{ParseErrorInfo, ParseOptions, ParseResult};
 
 /// Validate and pass through CSL-JSON input.
 ///
@@ -25,8 +25,11 @@ pub fn parse_csl_json(input: &str, options: &ParseOptions) -> ParseResult {
         return ParseResult {
             entries: vec![],
             errors: vec![ParseErrorInfo {
-                preview: format!("Input size {} bytes exceeds limit {} bytes",
-                    input.len(), options.max_input_bytes),
+                preview: format!(
+                    "Input size {} bytes exceeds limit {} bytes",
+                    input.len(),
+                    options.max_input_bytes
+                ),
                 error: "input too large".to_string(),
             }],
             format: "csl-json".to_string(),
@@ -86,12 +89,14 @@ pub fn parse_csl_json(input: &str, options: &ParseOptions) -> ParseResult {
         match serde_json::from_value::<hayagriva::citationberg::json::Item>(item.clone()) {
             Ok(_) => entries.push(item),
             Err(e) => {
-                let preview = serde_json::to_string(&item)
-                    .unwrap_or_else(|_| format!("{item:?}"));
-                errors.push(ParseErrorInfo {
-                    preview: preview.chars().take(80).collect(),
-                    error: format!("invalid CSL-JSON item: {e}"),
-                });
+                if errors.len() < crate::parsers::MAX_PARSE_ERRORS {
+                    let preview =
+                        serde_json::to_string(&item).unwrap_or_else(|_| format!("{item:?}"));
+                    errors.push(ParseErrorInfo {
+                        preview: preview.chars().take(80).collect(),
+                        error: format!("invalid CSL-JSON item: {e}"),
+                    });
+                }
             }
         }
     }
@@ -163,7 +168,10 @@ mod tests {
             {"type": "article-journal", "title": "B"},
             {"type": "article-journal", "title": "C"}
         ]"#;
-        let opts = ParseOptions { max_entries: Some(2), ..Default::default() };
+        let opts = ParseOptions {
+            max_entries: Some(2),
+            ..Default::default()
+        };
         let result = parse_csl_json(input, &opts);
         assert_eq!(result.entries.len(), 2);
         assert!(result.truncated);

@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 
-use serde_json::{json, Value};
-use super::{ParseOptions, ParseResult, ParseErrorInfo};
+use super::{ParseErrorInfo, ParseOptions, ParseResult};
+use biblatex::{Bibliography as BibBib, ChunksExt};
 use hayagriva::io::from_biblatex_str;
 use hayagriva::Entry;
-use biblatex::{Bibliography as BibBib, ChunksExt};
+use serde_json::{json, Value};
 use unicode_normalization::UnicodeNormalization;
 
 fn combining_latex_command(mark: char) -> Option<&'static str> {
@@ -69,7 +69,8 @@ fn normalize_display_text(text: &str) -> String {
 
 fn bib_field(entry: &biblatex::Entry, keys: &[&str]) -> Option<String> {
     keys.iter().find_map(|key| {
-        entry.get(key)
+        entry
+            .get(key)
             .map(|chunks| normalize_display_text(chunks.format_verbatim().trim()))
             .filter(|value| !value.is_empty())
     })
@@ -80,7 +81,11 @@ fn insert_string_if_missing(
     key: &str,
     value: Option<String>,
 ) {
-    if obj.get(key).and_then(|v| v.as_str()).is_some_and(|s| !s.trim().is_empty()) {
+    if obj
+        .get(key)
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty())
+    {
         return;
     }
     if let Some(value) = value.filter(|s| !s.trim().is_empty()) {
@@ -115,7 +120,9 @@ fn biblatex_type_to_csl(entry: &biblatex::Entry) -> Option<&'static str> {
             }
         }
         T::Book | T::MvBook => Some("book"),
-        T::InBook | T::InCollection | T::SuppBook | T::SuppCollection | T::InReference => Some("chapter"),
+        T::InBook | T::InCollection | T::SuppBook | T::SuppCollection | T::InReference => {
+            Some("chapter")
+        }
         T::InProceedings | T::Proceedings | T::MvProceedings => Some("paper-conference"),
         T::MastersThesis | T::PhdThesis | T::Thesis => Some("thesis"),
         T::TechReport | T::Report => Some("report"),
@@ -137,11 +144,23 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
     // Type mapping: Hayagriva EntryType → CSL-JSON type string
     let csl_type = match entry.entry_type() {
         hayagriva::types::EntryType::Article => {
-            if entry.parents().iter().any(|p| *p.entry_type() == hayagriva::types::EntryType::Periodical) {
+            if entry
+                .parents()
+                .iter()
+                .any(|p| *p.entry_type() == hayagriva::types::EntryType::Periodical)
+            {
                 "article-journal"
-            } else if entry.parents().iter().any(|p| *p.entry_type() == hayagriva::types::EntryType::Proceedings) {
+            } else if entry
+                .parents()
+                .iter()
+                .any(|p| *p.entry_type() == hayagriva::types::EntryType::Proceedings)
+            {
                 "paper-conference"
-            } else if entry.parents().iter().any(|p| *p.entry_type() == hayagriva::types::EntryType::Newspaper) {
+            } else if entry
+                .parents()
+                .iter()
+                .any(|p| *p.entry_type() == hayagriva::types::EntryType::Newspaper)
+            {
                 "article-newspaper"
             } else {
                 "article"
@@ -166,23 +185,26 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
 
     // Authors
     if let Some(authors) = entry.authors() {
-        let names: Vec<serde_json::Value> = authors.iter().map(|p| {
-            if let Some(given) = &p.given_name {
-                let mut name_obj = json!({
-                    "family": normalize_display_text(&p.name),
-                    "given": normalize_display_text(given),
-                });
-                if let Some(prefix) = &p.prefix {
-                    name_obj["dropping-particle"] = json!(normalize_display_text(prefix));
+        let names: Vec<serde_json::Value> = authors
+            .iter()
+            .map(|p| {
+                if let Some(given) = &p.given_name {
+                    let mut name_obj = json!({
+                        "family": normalize_display_text(&p.name),
+                        "given": normalize_display_text(given),
+                    });
+                    if let Some(prefix) = &p.prefix {
+                        name_obj["dropping-particle"] = json!(normalize_display_text(prefix));
+                    }
+                    if let Some(suffix) = &p.suffix {
+                        name_obj["suffix"] = json!(normalize_display_text(suffix));
+                    }
+                    name_obj
+                } else {
+                    json!({"literal": normalize_display_text(&p.name)})
                 }
-                if let Some(suffix) = &p.suffix {
-                    name_obj["suffix"] = json!(normalize_display_text(suffix));
-                }
-                name_obj
-            } else {
-                json!({"literal": normalize_display_text(&p.name)})
-            }
-        }).collect();
+            })
+            .collect();
         if !names.is_empty() {
             obj.insert("author".into(), json!(names));
         }
@@ -190,23 +212,26 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
 
     // Editors
     if let Some(editors) = entry.editors() {
-        let names: Vec<serde_json::Value> = editors.iter().map(|p| {
-            if let Some(given) = &p.given_name {
-                let mut name_obj = json!({
-                    "family": normalize_display_text(&p.name),
-                    "given": normalize_display_text(given),
-                });
-                if let Some(prefix) = &p.prefix {
-                    name_obj["dropping-particle"] = json!(normalize_display_text(prefix));
+        let names: Vec<serde_json::Value> = editors
+            .iter()
+            .map(|p| {
+                if let Some(given) = &p.given_name {
+                    let mut name_obj = json!({
+                        "family": normalize_display_text(&p.name),
+                        "given": normalize_display_text(given),
+                    });
+                    if let Some(prefix) = &p.prefix {
+                        name_obj["dropping-particle"] = json!(normalize_display_text(prefix));
+                    }
+                    if let Some(suffix) = &p.suffix {
+                        name_obj["suffix"] = json!(normalize_display_text(suffix));
+                    }
+                    name_obj
+                } else {
+                    json!({"literal": normalize_display_text(&p.name)})
                 }
-                if let Some(suffix) = &p.suffix {
-                    name_obj["suffix"] = json!(normalize_display_text(suffix));
-                }
-                name_obj
-            } else {
-                json!({"literal": normalize_display_text(&p.name)})
-            }
-        }).collect();
+            })
+            .collect();
         if !names.is_empty() {
             obj.insert("editor".into(), json!(names));
         }
@@ -228,21 +253,40 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
     if let Some(parent) = entry.parents().first() {
         if let Some(title) = parent.title() {
             let title = title.to_string();
-            obj.insert("container-title".into(), json!(normalize_display_text(&title)));
+            obj.insert(
+                "container-title".into(),
+                json!(normalize_display_text(&title)),
+            );
         }
     }
 
     // Identifiers
-    if let Some(doi) = entry.doi() { obj.insert("DOI".into(), json!(doi)); }
-    if let Some(isbn) = entry.isbn() { obj.insert("ISBN".into(), json!(isbn)); }
-    if let Some(issn) = entry.issn() { obj.insert("ISSN".into(), json!(issn)); }
-    if let Some(url) = entry.url_any() { obj.insert("URL".into(), json!(url.value.to_string())); }
+    if let Some(doi) = entry.doi() {
+        obj.insert("DOI".into(), json!(doi));
+    }
+    if let Some(isbn) = entry.isbn() {
+        obj.insert("ISBN".into(), json!(isbn));
+    }
+    if let Some(issn) = entry.issn() {
+        obj.insert("ISSN".into(), json!(issn));
+    }
+    if let Some(url) = entry.url_any() {
+        obj.insert("URL".into(), json!(url.value.to_string()));
+    }
 
     // Biblio fields
-    if let Some(v) = entry.volume() { obj.insert("volume".into(), json!(v.to_string())); }
-    if let Some(v) = entry.issue() { obj.insert("issue".into(), json!(v.to_string())); }
-    if let Some(v) = entry.page_range() { obj.insert("page".into(), json!(v.to_string())); }
-    if let Some(v) = entry.edition() { obj.insert("edition".into(), json!(v.to_string())); }
+    if let Some(v) = entry.volume() {
+        obj.insert("volume".into(), json!(v.to_string()));
+    }
+    if let Some(v) = entry.issue() {
+        obj.insert("issue".into(), json!(v.to_string()));
+    }
+    if let Some(v) = entry.page_range() {
+        obj.insert("page".into(), json!(v.to_string()));
+    }
+    if let Some(v) = entry.edition() {
+        obj.insert("edition".into(), json!(v.to_string()));
+    }
 
     // Abstract / note (FormatString::to_string strips markup)
     if let Some(s) = entry.abstract_() {
@@ -260,13 +304,16 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
     }
 
     // PMID / PMCID — CSL 1.0.1+ top-level variables
-    if let Some(v) = entry.pmid() { obj.insert("PMID".into(), json!(v)); }
-    if let Some(v) = entry.pmcid() { obj.insert("PMCID".into(), json!(v)); }
+    if let Some(v) = entry.pmid() {
+        obj.insert("PMID".into(), json!(v));
+    }
+    if let Some(v) = entry.pmcid() {
+        obj.insert("PMCID".into(), json!(v));
+    }
 
     // arXiv → custom.eprint (CSL has no top-level arxiv variable)
     if let Some(v) = entry.arxiv() {
-        let custom = obj.entry("custom")
-            .or_insert_with(|| json!({}));
+        let custom = obj.entry("custom").or_insert_with(|| json!({}));
         if let Some(map) = custom.as_object_mut() {
             map.insert("eprint".into(), json!({ "id": v, "type": "arxiv" }));
         }
@@ -280,7 +327,10 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
         }
         if let Some(loc) = pub_.location() {
             let value = loc.to_string();
-            obj.insert("publisher-place".into(), json!(normalize_display_text(&value)));
+            obj.insert(
+                "publisher-place".into(),
+                json!(normalize_display_text(&value)),
+            );
         }
     }
 
@@ -315,15 +365,19 @@ fn collect_biblatex_entries(input: &str) -> Vec<biblatex::Entry> {
     let mut out = Vec::new();
     for chunk in input.split("\n@") {
         let chunk = chunk.trim();
-        if chunk.is_empty() { continue; }
+        if chunk.is_empty() {
+            continue;
+        }
         let entry_str = if chunk.starts_with('@') {
             chunk.to_string()
         } else {
             format!("@{chunk}")
         };
         let lower = entry_str.to_lowercase();
-        if lower.starts_with("@preamble") || lower.starts_with("@string")
-            || lower.starts_with("@comment") {
+        if lower.starts_with("@preamble")
+            || lower.starts_with("@string")
+            || lower.starts_with("@comment")
+        {
             continue;
         }
         if let Ok(bib) = BibBib::parse(&entry_str) {
@@ -342,7 +396,9 @@ fn collect_biblatex_entries(input: &str) -> Vec<biblatex::Entry> {
 /// exposes these on `Entry`. O(n) lookup-map build + O(1) merge per entry.
 fn merge_biblatex_extras(entries: &mut [Value], input: &str) {
     let bib_entries = collect_biblatex_entries(input);
-    if bib_entries.is_empty() { return; }
+    if bib_entries.is_empty() {
+        return;
+    }
 
     let mut index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for (i, e) in bib_entries.iter().enumerate() {
@@ -350,10 +406,14 @@ fn merge_biblatex_extras(entries: &mut [Value], input: &str) {
     }
 
     for entry_csl in entries.iter_mut() {
-        let Some(key) = entry_csl.get("id").and_then(|v| v.as_str()) else { continue };
+        let Some(key) = entry_csl.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
         let Some(&idx) = index.get(key) else { continue };
         let bib_entry = &bib_entries[idx];
-        let Some(obj) = entry_csl.as_object_mut() else { continue };
+        let Some(obj) = entry_csl.as_object_mut() else {
+            continue;
+        };
 
         if let Some(csl_type) = biblatex_type_to_csl(bib_entry) {
             obj.insert("type".into(), json!(csl_type));
@@ -362,10 +422,17 @@ fn merge_biblatex_extras(entries: &mut [Value], input: &str) {
         insert_string_if_missing(
             obj,
             "container-title",
-            bib_field(bib_entry, &["journaltitle", "journal", "booktitle", "eventtitle"]),
+            bib_field(
+                bib_entry,
+                &["journaltitle", "journal", "booktitle", "eventtitle"],
+            ),
         );
         insert_string_if_missing(obj, "event-title", bib_field(bib_entry, &["eventtitle"]));
-        insert_string_if_missing(obj, "publisher-place", bib_field(bib_entry, &["location", "address"]));
+        insert_string_if_missing(
+            obj,
+            "publisher-place",
+            bib_field(bib_entry, &["location", "address"]),
+        );
         insert_string_if_missing(
             obj,
             "publisher",
@@ -443,11 +510,13 @@ fn merge_biblatex_extras(entries: &mut [Value], input: &str) {
         // `eprinttype = arxiv`), augment with `class` but preserve id/type.
         if let Ok(id) = bib_entry.eprint() {
             let id = id.trim().to_string();
-            let eprint_type = bib_entry.eprint_type()
+            let eprint_type = bib_entry
+                .eprint_type()
                 .ok()
                 .map(|c| c.format_verbatim().trim().to_lowercase())
                 .filter(|s| !s.is_empty());
-            let eprint_class = bib_entry.eprint_class()
+            let eprint_class = bib_entry
+                .eprint_class()
                 .ok()
                 .map(|c| c.format_verbatim().trim().to_string())
                 .filter(|s| !s.is_empty());
@@ -497,8 +566,11 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
         return ParseResult {
             entries: vec![],
             errors: vec![ParseErrorInfo {
-                preview: format!("Input size {} bytes exceeds limit {} bytes",
-                    input.len(), options.max_input_bytes),
+                preview: format!(
+                    "Input size {} bytes exceeds limit {} bytes",
+                    input.len(),
+                    options.max_input_bytes
+                ),
                 error: "input too large".to_string(),
             }],
             format: "bibtex".to_string(),
@@ -547,7 +619,9 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
 
             for chunk in input.split("\n@") {
                 let chunk = chunk.trim();
-                if chunk.is_empty() { continue; }
+                if chunk.is_empty() {
+                    continue;
+                }
 
                 let entry_str = if chunk.starts_with('@') {
                     chunk.to_string()
@@ -556,8 +630,10 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
                 };
 
                 let lower = entry_str.to_lowercase();
-                if lower.starts_with("@preamble") || lower.starts_with("@string")
-                    || lower.starts_with("@comment") {
+                if lower.starts_with("@preamble")
+                    || lower.starts_with("@string")
+                    || lower.starts_with("@comment")
+                {
                     continue;
                 }
 
@@ -576,10 +652,16 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
                         }
                     }
                     Err(e) => {
-                        errors.push(ParseErrorInfo {
-                            preview: entry_str.chars().take(80).collect(),
-                            error: format!("{}", e.first().map(|e| format!("{e}")).unwrap_or_default()),
-                        });
+                        if errors.len() < crate::parsers::MAX_PARSE_ERRORS {
+                            errors.push(ParseErrorInfo {
+                                preview: entry_str.chars().take(80).collect(),
+                                error: e
+                                    .first()
+                                    .map(|e| format!("{e}"))
+                                    .unwrap_or_default()
+                                    .to_string(),
+                            });
+                        }
                     }
                 }
             }
@@ -611,7 +693,11 @@ mod tests {
         let result = parse_bibtex(input, &ParseOptions::default());
 
         assert_eq!(result.entries.len(), 2, "should parse 2 entries");
-        assert!(result.errors.is_empty(), "should have no errors: {:?}", result.errors);
+        assert!(
+            result.errors.is_empty(),
+            "should have no errors: {:?}",
+            result.errors
+        );
         assert!(!result.truncated);
 
         let first = &result.entries[0];
@@ -639,8 +725,17 @@ mod tests {
     fn test_parse_bibtex_preserves_metadata() {
         let input = include_str!("../../../../tests/fixtures/samples/metadata-rich.bib");
         let result = parse_bibtex(input, &ParseOptions::default());
-        assert_eq!(result.entries.len(), 3, "should parse 3 entries: {:?}", result.errors);
-        assert!(result.errors.is_empty(), "unexpected errors: {:?}", result.errors);
+        assert_eq!(
+            result.entries.len(),
+            3,
+            "should parse 3 entries: {:?}",
+            result.errors
+        );
+        assert!(
+            result.errors.is_empty(),
+            "unexpected errors: {:?}",
+            result.errors
+        );
 
         let first = &result.entries[0];
         assert_eq!(first["abstract"], "This paper studies Z.");
@@ -648,8 +743,10 @@ mod tests {
         // CSL `keyword` is singular, string (per CSL v1.0 schema). Only the
         // biblatex-merge path populates this (hayagriva doesn't expose keywords).
         let kw = first["keyword"].as_str().expect("keyword must be a string");
-        assert!(kw.contains("machine learning") && kw.contains("NLP"),
-            "keyword should carry both tags: {kw}");
+        assert!(
+            kw.contains("machine learning") && kw.contains("NLP"),
+            "keyword should carry both tags: {kw}"
+        );
         // PMID/PMCID top-level. hayagriva only reads PMID from `eprinttype=pubmed`;
         // this fixture has `eprinttype=arxiv`, so PMID/PMCID are load-bearing on
         // the merge path specifically.
@@ -659,14 +756,18 @@ mod tests {
         // merge (id+type+class). `class` is the merge-only signal.
         assert_eq!(first["custom"]["eprint"]["id"], "2301.12345");
         assert_eq!(first["custom"]["eprint"]["type"], "arxiv");
-        assert_eq!(first["custom"]["eprint"]["class"], "cs.CL",
+        assert_eq!(
+            first["custom"]["eprint"]["class"], "cs.CL",
             "eprintclass is only reachable via the biblatex merge path: {}",
-            first["custom"]);
+            first["custom"]
+        );
 
         let second = &result.entries[1];
         assert_eq!(second["chapter-number"], "7");
-        assert_eq!(second["collection-title"], "Studies in Knowledge",
-            "series should map to collection-title: {second}");
+        assert_eq!(
+            second["collection-title"], "Studies in Knowledge",
+            "series should map to collection-title: {second}"
+        );
 
         // Legacy `journal = {…}` (classic BibTeX) still parses as article with
         // container-title and keywords picked up by the merge.
@@ -690,7 +791,12 @@ mod tests {
 }"#;
         let result = parse_bibtex(input, &ParseOptions::default());
 
-        assert_eq!(result.entries.len(), 1, "expected one entry: {:?}", result.errors);
+        assert_eq!(
+            result.entries.len(),
+            1,
+            "expected one entry: {:?}",
+            result.errors
+        );
         let first = &result.entries[0];
         assert_eq!(first["type"], "article-journal");
         assert_eq!(first["title"], "Deep Learning");
@@ -714,7 +820,12 @@ mod tests {
 }"#;
         let result = parse_bibtex(input, &ParseOptions::default());
 
-        assert_eq!(result.entries.len(), 1, "expected one entry: {:?}", result.errors);
+        assert_eq!(
+            result.entries.len(),
+            1,
+            "expected one entry: {:?}",
+            result.errors
+        );
         let first = &result.entries[0];
         assert_eq!(first["type"], "paper-conference");
         assert_eq!(first["container-title"], "Proceedings of NeurIPS");
@@ -741,7 +852,12 @@ mod tests {
 }"#;
         let result = parse_bibtex(input, &ParseOptions::default());
 
-        assert_eq!(result.entries.len(), 2, "expected two entries: {:?}", result.errors);
+        assert_eq!(
+            result.entries.len(),
+            2,
+            "expected two entries: {:?}",
+            result.errors
+        );
         let dataset = &result.entries[0];
         assert_eq!(dataset["type"], "dataset");
         assert_eq!(dataset["DOI"], "10.5281/zenodo.1234567");
@@ -785,15 +901,24 @@ mod tests {
 "#;
         let result = parse_bibtex(input, &ParseOptions::default());
         // hayagriva keeps both smith entries + doe = 3.
-        assert_eq!(result.entries.len(), 3, "hayagriva tolerates dupes: {:?}", result.errors);
+        assert_eq!(
+            result.entries.len(),
+            3,
+            "hayagriva tolerates dupes: {:?}",
+            result.errors
+        );
         // The non-duplicated `doe2023` must still have its keyword merged even
         // though `smith2024` is duplicated earlier in the file.
-        let doe = result.entries.iter()
+        let doe = result
+            .entries
+            .iter()
             .find(|e| e["id"] == "doe2023")
             .expect("doe2023 present");
-        assert_eq!(doe["keyword"], "nlp",
+        assert_eq!(
+            doe["keyword"], "nlp",
             "merge must salvage keywords on entries with unique keys even when \
-             the file contains duplicate-key entries elsewhere");
+             the file contains duplicate-key entries elsewhere"
+        );
     }
 
     #[test]
@@ -811,9 +936,11 @@ mod tests {
         let result = parse_bibtex(input, &ParseOptions::default());
         assert_eq!(result.entries.len(), 1);
         let first = &result.entries[0];
-        assert!(first["custom"]["eprint"].is_null(),
+        assert!(
+            first["custom"]["eprint"].is_null(),
             "eprint without eprinttype must not populate custom.eprint: {}",
-            first["custom"]);
+            first["custom"]
+        );
     }
 
     #[test]
@@ -821,7 +948,12 @@ mod tests {
         let input = "@article{x,\n  title = {Aspectos jur\\\u{301}idicos e Jo\\\u{303}ao},\n  author = {Silva, Jo\\\u{303}ao and Garc\\\u{301}ia, Mar\\\u{301}ia},\n  journal = {Revista},\n  year = {2024}\n}";
         let result = parse_bibtex(input, &ParseOptions::default());
 
-        assert_eq!(result.entries.len(), 1, "expected one parsed entry: {:?}", result.errors);
+        assert_eq!(
+            result.entries.len(),
+            1,
+            "expected one parsed entry: {:?}",
+            result.errors
+        );
         let first = &result.entries[0];
         assert_eq!(first["title"], "Aspectos jurídicos e João");
         assert_eq!(first["author"][0]["family"], "Silva");

@@ -39,18 +39,83 @@ fn format_author_yaml(author: &Value) -> String {
     name.trim().to_string()
 }
 
-/// Escape a YAML string value. Wraps in quotes if it contains special chars.
+/// Escape a YAML string value.
+///
+/// Whitelist, not blacklist: a plain (unquoted) scalar is only emitted when
+/// it starts with an alphanumeric char, contains nothing outside a small
+/// safe set, and cannot be type-coerced by YAML (`true`, `null`, numbers…).
+/// Everything else is double-quoted with full escape coverage. The previous
+/// blacklist missed `true`/`null`, leading `-`/`@`/`*`/`&`/`!`, embedded
+/// `: ` and more — each of those silently produced YAML that hayagriva's
+/// own reader rejects.
 fn yaml_str(s: &str) -> String {
-    if s.contains(':') || s.contains('#') || s.contains('"') || s.contains('\'')
-        || s.contains('\n') || s.starts_with('{') || s.starts_with('[')
-        || s.starts_with(' ') || s.ends_with(' ')
-        || s.parse::<f64>().is_ok()
-    {
-        // Use double quotes with escaped internal quotes
-        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-    } else {
+    if is_plain_yaml_safe(s) {
         s.to_string()
+    } else {
+        yaml_quote(s)
     }
+}
+
+fn is_plain_yaml_safe(s: &str) -> bool {
+    if s.is_empty() || s.ends_with(' ') {
+        return false;
+    }
+    // Scalars YAML 1.1/1.2 loaders may coerce to bool/null/number.
+    let lower = s.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "true" | "false" | "null" | "~" | "yes" | "no" | "on" | "off"
+    ) {
+        return false;
+    }
+    if s.parse::<f64>().is_ok() {
+        return false;
+    }
+    let mut chars = s.chars();
+    let first = chars.next().unwrap();
+    if !first.is_alphanumeric() {
+        return false;
+    }
+    s.chars().all(|c| {
+        c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.' | '/' | '(' | ')' | '+' | ';')
+    })
+}
+
+/// Double-quoted YAML scalar with escapes for backslash, quote, control
+/// chars and newlines (a raw newline inside a double-quoted scalar folds —
+/// content would silently change).
+fn yaml_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// `language` maps to hayagriva's `LanguageIdentifier` (BCP-47) — junk
+/// values fail the YAML load even when quoted, so anything that doesn't
+/// look like a language tag is omitted entirely rather than emitted.
+fn is_language_tag(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 35
+        && s.split('-').enumerate().all(|(i, part)| {
+            let len_ok = if i == 0 {
+                (2..=3).contains(&part.len()) && part.chars().all(|c| c.is_ascii_alphabetic())
+            } else {
+                (1..=8).contains(&part.len()) && part.chars().all(|c| c.is_ascii_alphanumeric())
+            };
+            len_ok
+        })
 }
 
 /// Convert a CSL-JSON item to a Hayagriva YAML entry string.
@@ -60,9 +125,16 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
 
     let raw_key = item["id"].as_str().unwrap_or("entry");
     // Sanitize key: replace non-alphanumeric chars (except - and _) with _
-    let key: String = raw_key.chars().map(|c| {
-        if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' }
-    }).collect();
+    let key: String = raw_key
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
 
     let mut lines: Vec<String> = Vec::new();
 
@@ -126,10 +198,18 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
     }
 
     // Biblio fields
-    if let Some(v) = item["volume"].as_str() { lines.push(format!("  volume: {}", yaml_str(v))); }
-    if let Some(v) = item["issue"].as_str() { lines.push(format!("  issue: {}", yaml_str(v))); }
-    if let Some(v) = item["page"].as_str() { lines.push(format!("  page-range: {}", yaml_str(v))); }
-    if let Some(v) = item["edition"].as_str() { lines.push(format!("  edition: {}", yaml_str(v))); }
+    if let Some(v) = item["volume"].as_str() {
+        lines.push(format!("  volume: {}", yaml_str(v)));
+    }
+    if let Some(v) = item["issue"].as_str() {
+        lines.push(format!("  issue: {}", yaml_str(v)));
+    }
+    if let Some(v) = item["page"].as_str() {
+        lines.push(format!("  page-range: {}", yaml_str(v)));
+    }
+    if let Some(v) = item["edition"].as_str() {
+        lines.push(format!("  edition: {}", yaml_str(v)));
+    }
 
     // Publisher
     if let Some(pub_name) = item["publisher"].as_str() {
@@ -142,27 +222,47 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
 
     // Serial-number (identifiers nested under serial-number:)
     let mut serial_fields: Vec<String> = Vec::new();
-    if let Some(v) = item["DOI"].as_str() { serial_fields.push(format!("    doi: {}", yaml_str(v))); }
-    if let Some(v) = item["ISBN"].as_str() { serial_fields.push(format!("    isbn: {}", yaml_str(v))); }
-    if let Some(v) = item["ISSN"].as_str() { serial_fields.push(format!("    issn: {}", yaml_str(v))); }
-    if let Some(v) = item["PMID"].as_str() { serial_fields.push(format!("    pmid: {}", yaml_str(v))); }
-    if let Some(v) = item["PMCID"].as_str() { serial_fields.push(format!("    pmcid: {}", yaml_str(v))); }
+    if let Some(v) = item["DOI"].as_str() {
+        serial_fields.push(format!("    doi: {}", yaml_str(v)));
+    }
+    if let Some(v) = item["ISBN"].as_str() {
+        serial_fields.push(format!("    isbn: {}", yaml_str(v)));
+    }
+    if let Some(v) = item["ISSN"].as_str() {
+        serial_fields.push(format!("    issn: {}", yaml_str(v)));
+    }
+    if let Some(v) = item["PMID"].as_str() {
+        serial_fields.push(format!("    pmid: {}", yaml_str(v)));
+    }
+    if let Some(v) = item["PMCID"].as_str() {
+        serial_fields.push(format!("    pmcid: {}", yaml_str(v)));
+    }
     if !serial_fields.is_empty() {
         lines.push("  serial-number:".to_string());
         lines.extend(serial_fields);
     }
 
     // URL (separate from serial-number)
-    if let Some(v) = item["URL"].as_str() { lines.push(format!("  url: {}", yaml_str(v))); }
+    if let Some(v) = item["URL"].as_str() {
+        lines.push(format!("  url: {}", yaml_str(v)));
+    }
 
     // Genre
-    if let Some(v) = item["genre"].as_str() { lines.push(format!("  genre: {}", yaml_str(v))); }
+    if let Some(v) = item["genre"].as_str() {
+        lines.push(format!("  genre: {}", yaml_str(v)));
+    }
 
     // Chapter
-    if let Some(v) = item["chapter-number"].as_str() { lines.push(format!("  chapter: {}", yaml_str(v))); }
+    if let Some(v) = item["chapter-number"].as_str() {
+        lines.push(format!("  chapter: {}", yaml_str(v)));
+    }
 
-    // Language
-    if let Some(v) = item["language"].as_str() { lines.push(format!("  language: {v}")); }
+    // Language — validated, never quoted-junk (see is_language_tag)
+    if let Some(v) = item["language"].as_str() {
+        if is_language_tag(v) {
+            lines.push(format!("  language: {v}"));
+        }
+    }
 
     // Abstract
     if let Some(v) = item["abstract"].as_str() {
@@ -174,8 +274,9 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
 
 /// Convert multiple CSL-JSON items to a Hayagriva YAML file string.
 pub fn csl_json_array_to_hayagriva(items: &[Value]) -> String {
-    let mut out = items.iter()
-        .map(|item| csl_json_to_hayagriva(item))
+    let mut out = items
+        .iter()
+        .map(csl_json_to_hayagriva)
         .collect::<Vec<_>>()
         .join("\n\n");
     out.push('\n');
@@ -201,16 +302,40 @@ mod tests {
         });
 
         let yaml = csl_json_to_hayagriva(&item);
-        assert!(yaml.starts_with("smith2024:"), "should start with key: {yaml}");
+        assert!(
+            yaml.starts_with("smith2024:"),
+            "should start with key: {yaml}"
+        );
         assert!(yaml.contains("type: Article"), "should have type: {yaml}");
-        assert!(yaml.contains("title: A Study of Something"), "should have title: {yaml}");
+        assert!(
+            yaml.contains("title: A Study of Something"),
+            "should have title: {yaml}"
+        );
         assert!(yaml.contains("- John Smith"), "should have author: {yaml}");
-        assert!(yaml.contains("- Jane Doe"), "should have second author: {yaml}");
-        assert!(yaml.contains("date: 2024-03-15"), "should have full date: {yaml}");
-        assert!(yaml.contains("title: Journal of Testing"), "should have parent: {yaml}");
-        assert!(yaml.contains("type: Periodical"), "parent should be Periodical: {yaml}");
-        assert!(yaml.contains("volume: \"42\""), "should have volume: {yaml}");
-        assert!(yaml.contains("    doi: 10.1234/test"), "should have doi under serial-number: {yaml}");
+        assert!(
+            yaml.contains("- Jane Doe"),
+            "should have second author: {yaml}"
+        );
+        assert!(
+            yaml.contains("date: 2024-03-15"),
+            "should have full date: {yaml}"
+        );
+        assert!(
+            yaml.contains("title: Journal of Testing"),
+            "should have parent: {yaml}"
+        );
+        assert!(
+            yaml.contains("type: Periodical"),
+            "parent should be Periodical: {yaml}"
+        );
+        assert!(
+            yaml.contains("volume: \"42\""),
+            "should have volume: {yaml}"
+        );
+        assert!(
+            yaml.contains("    doi: 10.1234/test"),
+            "should have doi under serial-number: {yaml}"
+        );
     }
 
     #[test]
@@ -227,9 +352,18 @@ mod tests {
 
         let yaml = csl_json_to_hayagriva(&item);
         assert!(yaml.contains("type: Book"), "should be Book: {yaml}");
-        assert!(yaml.contains("name: Anchor Books"), "should have publisher: {yaml}");
-        assert!(yaml.contains("location: New York"), "should have location: {yaml}");
-        assert!(yaml.contains("date: 2014"), "should have year-only date: {yaml}");
+        assert!(
+            yaml.contains("name: Anchor Books"),
+            "should have publisher: {yaml}"
+        );
+        assert!(
+            yaml.contains("location: New York"),
+            "should have location: {yaml}"
+        );
+        assert!(
+            yaml.contains("date: 2014"),
+            "should have year-only date: {yaml}"
+        );
     }
 
     #[test]
@@ -243,8 +377,10 @@ mod tests {
         });
 
         let yaml = csl_json_to_hayagriva(&item);
-        assert!(yaml.contains("\"Title with: colon and \\\"quotes\\\"\""),
-            "special chars should be escaped: {yaml}");
+        assert!(
+            yaml.contains("\"Title with: colon and \\\"quotes\\\"\""),
+            "special chars should be escaped: {yaml}"
+        );
     }
 
     #[test]
@@ -264,12 +400,30 @@ mod tests {
 
         let yaml = csl_json_to_hayagriva(&item);
         // Identifiers MUST be nested under serial-number:
-        assert!(yaml.contains("  serial-number:"), "should have serial-number block: {yaml}");
-        assert!(yaml.contains("    doi: 10.1234/test"), "doi nested under serial-number: {yaml}");
-        assert!(yaml.contains("    isbn: 978-0747551003"), "isbn nested under serial-number: {yaml}");
-        assert!(yaml.contains("    issn: 2412-3129"), "issn nested under serial-number: {yaml}");
-        assert!(yaml.contains("    pmid: \"12345678\""), "pmid should be quoted (numeric): {yaml}");
-        assert!(yaml.contains("    pmcid: PMC9876543"), "pmcid nested under serial-number: {yaml}");
+        assert!(
+            yaml.contains("  serial-number:"),
+            "should have serial-number block: {yaml}"
+        );
+        assert!(
+            yaml.contains("    doi: 10.1234/test"),
+            "doi nested under serial-number: {yaml}"
+        );
+        assert!(
+            yaml.contains("    isbn: 978-0747551003"),
+            "isbn nested under serial-number: {yaml}"
+        );
+        assert!(
+            yaml.contains("    issn: 2412-3129"),
+            "issn nested under serial-number: {yaml}"
+        );
+        assert!(
+            yaml.contains("    pmid: \"12345678\""),
+            "pmid should be quoted (numeric): {yaml}"
+        );
+        assert!(
+            yaml.contains("    pmcid: PMC9876543"),
+            "pmcid nested under serial-number: {yaml}"
+        );
         // Must NOT have flat doi/isbn/issn fields at root level
         assert!(!yaml.contains("\n  doi:"), "doi must not be flat: {yaml}");
         assert!(!yaml.contains("\n  isbn:"), "isbn must not be flat: {yaml}");
@@ -289,8 +443,14 @@ mod tests {
         });
 
         let yaml = csl_json_to_hayagriva(&item);
-        assert!(yaml.contains("  genre: Doctoral dissertation"), "should have genre: {yaml}");
-        assert!(yaml.contains("  chapter: \"3\""), "should have chapter (quoted numeric): {yaml}");
+        assert!(
+            yaml.contains("  genre: Doctoral dissertation"),
+            "should have genre: {yaml}"
+        );
+        assert!(
+            yaml.contains("  chapter: \"3\""),
+            "should have chapter (quoted numeric): {yaml}"
+        );
     }
 
     #[test]

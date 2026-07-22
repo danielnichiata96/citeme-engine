@@ -28,12 +28,34 @@ impl InputFormat {
     }
 }
 
+/// `@` + ASCII-alpha entry type + optional whitespace + `{` or `(`.
+/// Bare `@` in prose ("me @ home", "@user mentions") never matches: the
+/// type word must be non-empty and immediately followed by the opener.
+fn looks_like_bibtex_entry(s: &str) -> bool {
+    for (i, c) in s.char_indices() {
+        if c != '@' {
+            continue;
+        }
+        let rest = &s[i + 1..];
+        // ASCII-alpha chars are 1 byte each, so count == byte offset.
+        let word_len = rest.chars().take_while(|c| c.is_ascii_alphabetic()).count();
+        if word_len == 0 {
+            continue;
+        }
+        let after = rest[word_len..].trim_start();
+        if after.starts_with('{') || after.starts_with('(') {
+            return true;
+        }
+    }
+    false
+}
+
 /// Auto-detect input format from content.
 ///
 /// Heuristics (applied in order):
 /// 1. Starts with `{` or `[` → CSL-JSON (valid JSON object/array)
-/// 2. Contains `@article`, `@book`, etc. → BibTeX
-/// 3. Contains `TY  -` → RIS
+/// 2. Any `@word{` / `@word(` entry opener → BibTeX
+/// 3. Contains `TY  -` at line start → RIS
 /// 4. Otherwise → Unknown
 pub fn detect_format(input: &str) -> InputFormat {
     let trimmed = input.trim();
@@ -49,26 +71,10 @@ pub fn detect_format(input: &str) -> InputFormat {
         }
     }
 
-    // BibTeX: look for @type{ pattern
-    let lower = trimmed.to_lowercase();
-    if lower.contains("@article")
-        || lower.contains("@book")
-        || lower.contains("@inproceedings")
-        || lower.contains("@incollection")
-        || lower.contains("@misc")
-        || lower.contains("@phdthesis")
-        || lower.contains("@mastersthesis")
-        || lower.contains("@techreport")
-        || lower.contains("@unpublished")
-        || lower.contains("@conference")
-        || lower.contains("@inbook")
-        || lower.contains("@proceedings")
-        || lower.contains("@manual")
-        || lower.contains("@online")
-        || lower.contains("@thesis")
-        || lower.contains("@report")
-        || lower.contains("@patent")
-    {
+    // BibTeX: any `@word{` / `@word(` entry opener. A closed list of entry
+    // types silently dropped valid BibTeX (`@dataset`, `@software`, custom
+    // types biblatex accepts) into Unknown.
+    if looks_like_bibtex_entry(trimmed) {
         return InputFormat::Bibtex;
     }
 
@@ -99,14 +105,26 @@ mod tests {
 
     #[test]
     fn test_detect_bibtex() {
-        assert_eq!(detect_format("@article{key, title={Test}}"), InputFormat::Bibtex);
-        assert_eq!(detect_format("@Book{key,\n  author={A}}"), InputFormat::Bibtex);
-        assert_eq!(detect_format("  @ARTICLE{key, title={Test}}"), InputFormat::Bibtex);
+        assert_eq!(
+            detect_format("@article{key, title={Test}}"),
+            InputFormat::Bibtex
+        );
+        assert_eq!(
+            detect_format("@Book{key,\n  author={A}}"),
+            InputFormat::Bibtex
+        );
+        assert_eq!(
+            detect_format("  @ARTICLE{key, title={Test}}"),
+            InputFormat::Bibtex
+        );
     }
 
     #[test]
     fn test_detect_ris() {
-        assert_eq!(detect_format("TY  - JOUR\nAU  - Smith\nER  -"), InputFormat::Ris);
+        assert_eq!(
+            detect_format("TY  - JOUR\nAU  - Smith\nER  -"),
+            InputFormat::Ris
+        );
         assert_eq!(detect_format("TY  -JOUR\nER  -"), InputFormat::Ris);
     }
 
