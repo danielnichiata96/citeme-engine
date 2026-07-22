@@ -2,21 +2,23 @@
 //! and format them through the engine.
 
 use citeme_engine_core::engine::CitationEngine;
-use citeme_engine_core::parsers::{self, ParseOptions};
 use citeme_engine_core::parsers::detect::{detect_format, InputFormat};
+use citeme_engine_core::parsers::{self, ParseOptions};
 use citeme_engine_core::types::FormatOptions;
 
 fn setup_engine() -> CitationEngine {
     let ws_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
 
     let mut engine = CitationEngine::new();
 
     // Load styles
     for style_file in std::fs::read_dir(ws_root.join("tests/fixtures/styles")).unwrap() {
         let path = style_file.unwrap().path();
-        if path.extension().map_or(false, |e| e == "csl") {
+        if path.extension().is_some_and(|e| e == "csl") {
             let name = path.file_stem().unwrap().to_str().unwrap();
             let xml = std::fs::read_to_string(&path).unwrap();
             engine.load_style(name, &xml).unwrap();
@@ -28,7 +30,11 @@ fn setup_engine() -> CitationEngine {
         let path = locale_file.unwrap().path();
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             if name.starts_with("locales-") && name.ends_with(".xml") {
-                let code = name.strip_prefix("locales-").unwrap().strip_suffix(".xml").unwrap();
+                let code = name
+                    .strip_prefix("locales-")
+                    .unwrap()
+                    .strip_suffix(".xml")
+                    .unwrap();
                 let xml = std::fs::read_to_string(&path).unwrap();
                 engine.load_locale(code, &xml).unwrap();
             }
@@ -50,18 +56,33 @@ fn test_real_bibtex_detect() {
 #[test]
 fn test_real_bibtex_parse() {
     let result = parsers::bibtex::parse_bibtex(REAL_BIBTEX, &ParseOptions::default());
-    println!("\n=== BibTeX parse: {} entries, {} errors ===", result.entries.len(), result.errors.len());
+    println!(
+        "\n=== BibTeX parse: {} entries, {} errors ===",
+        result.entries.len(),
+        result.errors.len()
+    );
     for (i, entry) in result.entries.iter().enumerate() {
-        println!("  [{}] type={}, title={}", i,
+        println!(
+            "  [{}] type={}, title={}",
+            i,
             entry["type"].as_str().unwrap_or("?"),
-            entry.get("title").and_then(|t| t.as_str()).unwrap_or("?"));
+            entry.get("title").and_then(|t| t.as_str()).unwrap_or("?")
+        );
     }
     for err in &result.errors {
         println!("  ERROR: {} — {}", err.preview, err.error);
     }
 
-    assert!(result.entries.len() >= 3, "should parse at least 3 entries from CrossRef BibTeX: got {}", result.entries.len());
-    assert!(result.errors.is_empty(), "should have no parse errors: {:?}", result.errors);
+    assert!(
+        result.entries.len() >= 3,
+        "should parse at least 3 entries from CrossRef BibTeX: got {}",
+        result.entries.len()
+    );
+    assert!(
+        result.errors.is_empty(),
+        "should have no parse errors: {:?}",
+        result.errors
+    );
 }
 
 #[test]
@@ -77,8 +98,14 @@ fn test_real_bibtex_format_apa() {
             Ok(fmt) => {
                 println!("\n  [{}] reference: {}", i, fmt.reference);
                 println!("       in_text:   {}", fmt.in_text);
-                assert!(!fmt.reference.is_empty(), "reference should not be empty for entry {i}");
-                assert!(!fmt.in_text.is_empty(), "in_text should not be empty for entry {i}");
+                assert!(
+                    !fmt.reference.is_empty(),
+                    "reference should not be empty for entry {i}"
+                );
+                assert!(
+                    !fmt.in_text.is_empty(),
+                    "in_text should not be empty for entry {i}"
+                );
             }
             Err(e) => panic!("format_one failed for entry {i}: {e}"),
         }
@@ -97,14 +124,25 @@ fn test_real_ris_detect() {
 #[test]
 fn test_real_ris_parse() {
     let result = parsers::ris::parse_ris(REAL_RIS, &ParseOptions::default());
-    println!("\n=== RIS parse: {} entries, {} errors ===", result.entries.len(), result.errors.len());
+    println!(
+        "\n=== RIS parse: {} entries, {} errors ===",
+        result.entries.len(),
+        result.errors.len()
+    );
     for (i, entry) in result.entries.iter().enumerate() {
-        println!("  [{}] type={}, title={}", i,
+        println!(
+            "  [{}] type={}, title={}",
+            i,
             entry["type"].as_str().unwrap_or("?"),
-            entry.get("title").and_then(|t| t.as_str()).unwrap_or("?"));
+            entry.get("title").and_then(|t| t.as_str()).unwrap_or("?")
+        );
     }
 
-    assert_eq!(result.entries.len(), 2, "should parse 2 RIS entries from CrossRef");
+    assert_eq!(
+        result.entries.len(),
+        2,
+        "should parse 2 RIS entries from CrossRef"
+    );
 }
 
 #[test]
@@ -120,8 +158,14 @@ fn test_real_ris_format_apa() {
             Ok(fmt) => {
                 println!("\n  [{}] reference: {}", i, fmt.reference);
                 println!("       in_text:   {}", fmt.in_text);
-                assert!(!fmt.reference.is_empty(), "reference should not be empty for entry {i}");
-                assert!(!fmt.in_text.is_empty(), "in_text should not be empty for entry {i}");
+                assert!(
+                    !fmt.reference.is_empty(),
+                    "reference should not be empty for entry {i}"
+                );
+                assert!(
+                    !fmt.in_text.is_empty(),
+                    "in_text should not be empty for entry {i}"
+                );
             }
             Err(e) => panic!("format_one failed for entry {i}: {e}"),
         }
@@ -140,14 +184,25 @@ fn test_real_nbib_detect() {
 #[test]
 fn test_real_nbib_parse() {
     let result = parsers::medline::parse_medline(REAL_NBIB, &ParseOptions::default());
-    println!("\n=== MEDLINE parse: {} entries, {} errors ===", result.entries.len(), result.errors.len());
+    println!(
+        "\n=== MEDLINE parse: {} entries, {} errors ===",
+        result.entries.len(),
+        result.errors.len()
+    );
     for (i, entry) in result.entries.iter().enumerate() {
-        println!("  [{}] type={}, title={}", i,
+        println!(
+            "  [{}] type={}, title={}",
+            i,
             entry["type"].as_str().unwrap_or("?"),
-            entry.get("title").and_then(|t| t.as_str()).unwrap_or("?"));
+            entry.get("title").and_then(|t| t.as_str()).unwrap_or("?")
+        );
         if let Some(authors) = entry["author"].as_array() {
             for a in authors {
-                println!("       author: {} {}", a["family"].as_str().unwrap_or(""), a["given"].as_str().unwrap_or(""));
+                println!(
+                    "       author: {} {}",
+                    a["family"].as_str().unwrap_or(""),
+                    a["given"].as_str().unwrap_or("")
+                );
             }
         }
         if let Some(doi) = entry["DOI"].as_str() {
@@ -157,8 +212,18 @@ fn test_real_nbib_parse() {
 
     assert_eq!(result.entries.len(), 1, "should parse 1 PubMed entry");
     let entry = &result.entries[0];
-    assert!(entry["title"].as_str().unwrap().contains("Pleomorphic Adenoma"), "title should contain expected text");
-    assert_eq!(entry["author"].as_array().unwrap().len(), 7, "should have 7 authors");
+    assert!(
+        entry["title"]
+            .as_str()
+            .unwrap()
+            .contains("Pleomorphic Adenoma"),
+        "title should contain expected text"
+    );
+    assert_eq!(
+        entry["author"].as_array().unwrap().len(),
+        7,
+        "should have 7 authors"
+    );
     assert_eq!(entry["DOI"].as_str().unwrap(), "10.1055/a-2166-8334");
 }
 
@@ -218,7 +283,14 @@ fn test_real_bibtex_multi_style() {
     let result = parsers::bibtex::parse_bibtex(REAL_BIBTEX, &ParseOptions::default());
     let first_entry = serde_json::to_string(&result.entries[0]).unwrap();
 
-    let styles = ["apa", "ieee", "mla", "chicago-author-date", "vancouver", "harvard"];
+    let styles = [
+        "apa",
+        "ieee",
+        "mla",
+        "chicago-author-date",
+        "vancouver",
+        "harvard",
+    ];
 
     println!("\n=== Kucsko et al. (2013) Nature — multi-style ===");
     for style in &styles {
@@ -227,8 +299,14 @@ fn test_real_bibtex_multi_style() {
             Ok(fmt) => {
                 println!("\n  {}: {}", style, fmt.reference);
                 println!("  {} in-text: {}", style, fmt.in_text);
-                assert!(!fmt.reference.is_empty(), "{style} reference should not be empty");
-                assert!(!fmt.in_text.is_empty(), "{style} in_text should not be empty");
+                assert!(
+                    !fmt.reference.is_empty(),
+                    "{style} reference should not be empty"
+                );
+                assert!(
+                    !fmt.in_text.is_empty(),
+                    "{style} in_text should not be empty"
+                );
             }
             Err(e) => println!("  {}: ERROR — {}", style, e),
         }
@@ -244,7 +322,10 @@ fn test_iso690_fr_style_loads_and_formats() {
     // scanning that tag for a `delimiter` attribute (byte-indexed slice landing
     // mid-character). Loading and formatting must never panic.
     let engine = setup_engine();
-    assert!(engine.has_style("iso690-author-date-fr"), "fixture should load");
+    assert!(
+        engine.has_style("iso690-author-date-fr"),
+        "fixture should load"
+    );
 
     let patent = r#"{
         "type": "patent",
@@ -255,9 +336,17 @@ fn test_iso690_fr_style_loads_and_formats() {
         "number": "FR3094000"
     }"#;
 
-    let result = engine.format_one(patent, "iso690-author-date-fr", "fr-FR", &FormatOptions::default());
+    let result = engine.format_one(
+        patent,
+        "iso690-author-date-fr",
+        "fr-FR",
+        &FormatOptions::default(),
+    );
     let fmt = result.expect("formatting must return Ok or a clean Err, never panic");
-    println!("\n=== iso690-author-date-fr patent ===\n  ref: {}\n  in-text: {}", fmt.reference, fmt.in_text);
+    println!(
+        "\n=== iso690-author-date-fr patent ===\n  ref: {}\n  in-text: {}",
+        fmt.reference, fmt.in_text
+    );
     assert!(!fmt.reference.is_empty(), "reference should not be empty");
 }
 
@@ -279,7 +368,12 @@ fn test_iso690_fr_renders_long_months_and_term_separator() {
     }"#;
 
     let fmt = engine
-        .format_one(patent, "iso690-author-date-fr", "fr-FR", &FormatOptions::default())
+        .format_one(
+            patent,
+            "iso690-author-date-fr",
+            "fr-FR",
+            &FormatOptions::default(),
+        )
         .expect("formatting must succeed");
 
     println!("\n=== iso690-fr parity ===\n  ref: {}", fmt.reference);
@@ -305,16 +399,25 @@ fn test_long_month_locale_terms_are_not_iso690_local() {
     // loaded locale, not something iso690-fr-specific: PLOS renders full
     // issued/accessed dates, whose month names come from pt-BR month-XX terms.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap().parent().unwrap().to_path_buf();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let mut engine = CitationEngine::new();
-    engine.load_locale(
-        "pt-BR",
-        &std::fs::read_to_string(root.join("tests/fixtures/locales/locales-pt-BR.xml")).unwrap(),
-    ).unwrap();
-    engine.load_style(
-        "plos",
-        &std::fs::read_to_string(root.join("tests/fixtures/styles/corpus/plos.csl")).unwrap(),
-    ).unwrap();
+    engine
+        .load_locale(
+            "pt-BR",
+            &std::fs::read_to_string(root.join("tests/fixtures/locales/locales-pt-BR.xml"))
+                .unwrap(),
+        )
+        .unwrap();
+    engine
+        .load_style(
+            "plos",
+            &std::fs::read_to_string(root.join("tests/fixtures/styles/corpus/plos.csl")).unwrap(),
+        )
+        .unwrap();
 
     let webpage = r#"{
         "type": "webpage",

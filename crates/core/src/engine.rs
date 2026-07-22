@@ -2,8 +2,11 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use hayagriva::citationberg::{IndependentStyle, LocaleFile, Locale, Style};
-use hayagriva::{BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest, CitePurpose};
+use hayagriva::citationberg::{IndependentStyle, Locale, LocaleFile, Style};
+use hayagriva::{
+    BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest,
+    CitePurpose,
+};
 
 use crate::error::EngineError;
 use crate::normalize::normalize_csl_xml;
@@ -20,6 +23,12 @@ pub struct CitationEngine {
     locales: Vec<Locale>,
     /// Track which locale codes are loaded to avoid duplicates
     loaded_locale_codes: Vec<String>,
+}
+
+impl Default for CitationEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CitationEngine {
@@ -40,19 +49,17 @@ impl CitationEngine {
         }
 
         let normalized = normalize_csl_xml(csl_xml);
-        let style = Style::from_xml(&normalized)
-            .map_err(|e| EngineError::InvalidStyle(format!("{e}")))?;
+        let style =
+            Style::from_xml(&normalized).map_err(|e| EngineError::InvalidStyle(format!("{e}")))?;
 
         match style {
             Style::Independent(ind) => {
                 self.styles.insert(name.to_string(), ind);
                 Ok(())
             }
-            Style::Dependent(_) => {
-                Err(EngineError::InvalidStyle(
-                    "dependent styles are not supported — load the parent style instead".into(),
-                ))
-            }
+            Style::Dependent(_) => Err(EngineError::InvalidStyle(
+                "dependent styles are not supported — load the parent style instead".into(),
+            )),
         }
     }
 
@@ -78,7 +85,9 @@ impl CitationEngine {
 
     /// Check if a locale is loaded.
     pub fn has_locale(&self, locale_code: &str) -> bool {
-        self.loaded_locale_codes.iter().any(|code| code == locale_code)
+        self.loaded_locale_codes
+            .iter()
+            .any(|code| code == locale_code)
     }
 
     /// List loaded style names.
@@ -124,7 +133,9 @@ impl CitationEngine {
         locale_code: &str,
         options: &FormatOptions,
     ) -> Result<FormatResult, EngineError> {
-        let style = self.styles.get(style_name)
+        let style = self
+            .styles
+            .get(style_name)
             .ok_or_else(|| EngineError::StyleNotLoaded(style_name.into()))?;
         self.ensure_locale_available(locale_code)?;
 
@@ -163,13 +174,17 @@ impl CitationEngine {
             OutputFormat::Plain => BufWriteFormat::Plain,
         };
 
-        let reference = rendered.bibliography
+        let reference = rendered
+            .bibliography
             .and_then(|bib| bib.items.into_iter().next())
             .map(|item| Self::render_bib_item(&item, buf_format))
             .unwrap_or_default();
 
         // Extract in-text citation
-        let in_text = rendered.citations.into_iter().next()
+        let in_text = rendered
+            .citations
+            .into_iter()
+            .next()
             .map(|c| {
                 let mut buf = String::new();
                 let _ = c.citation.write_buf(&mut buf, buf_format);
@@ -183,7 +198,10 @@ impl CitationEngine {
             return Ok(Self::apply_abnt_if_needed(fallback, options));
         }
 
-        Ok(Self::apply_abnt_if_needed(FormatResult { reference, in_text }, options))
+        Ok(Self::apply_abnt_if_needed(
+            FormatResult { reference, in_text },
+            options,
+        ))
     }
 
     /// Format a batch of CSL-JSON items in one call.
@@ -200,7 +218,9 @@ impl CitationEngine {
         locale_code: &str,
         options: &FormatOptions,
     ) -> Result<Vec<FormatResult>, EngineError> {
-        let style = self.styles.get(style_name)
+        let style = self
+            .styles
+            .get(style_name)
             .ok_or_else(|| EngineError::StyleNotLoaded(style_name.into()))?;
         self.ensure_locale_available(locale_code)?;
 
@@ -216,7 +236,10 @@ impl CitationEngine {
         for (i, item) in items.iter_mut().enumerate() {
             if let Some(obj) = item.as_object_mut() {
                 if !obj.contains_key("id") || obj["id"].as_str().unwrap_or("").is_empty() {
-                    obj.insert("id".to_string(), serde_json::Value::String(format!("_citeme_batch_{i}")));
+                    obj.insert(
+                        "id".to_string(),
+                        serde_json::Value::String(format!("_citeme_batch_{i}")),
+                    );
                 }
             }
         }
@@ -235,7 +258,10 @@ impl CitationEngine {
                 }
                 Some(&first) if items[first] != items[i] => {
                     if let Some(obj) = items[i].as_object_mut() {
-                        obj.insert("id".to_string(), serde_json::Value::String(format!("_citeme_batch_dup_{i}")));
+                        obj.insert(
+                            "id".to_string(),
+                            serde_json::Value::String(format!("_citeme_batch_dup_{i}")),
+                        );
                     }
                 }
                 Some(_) => {}
@@ -250,9 +276,12 @@ impl CitationEngine {
 
         // Parse all items — deserialize from &Value (no per-item clone;
         // `items` stays owned for the rare empty-output fallback below).
-        let parsed_items: Vec<hayagriva::citationberg::json::Item> = items.iter()
-            .map(|v| hayagriva::citationberg::json::Item::deserialize(v)
-                .map_err(|e| EngineError::InvalidCslJson(format!("{e}"))))
+        let parsed_items: Vec<hayagriva::citationberg::json::Item> = items
+            .iter()
+            .map(|v| {
+                hayagriva::citationberg::json::Item::deserialize(v)
+                    .map_err(|e| EngineError::InvalidCslJson(format!("{e}")))
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         // Use ONE shared driver for the entire batch
@@ -281,17 +310,27 @@ impl CitationEngine {
 
         // Build bibliography key-based lookup.
         // All items now have ids (synthetic ones injected above for items without).
-        let bib_map: HashMap<String, String> = rendered.bibliography
-            .map(|bib| bib.items.iter().map(|bib_item| {
-                (bib_item.key.clone(), Self::render_bib_item(bib_item, buf_format))
-            }).collect())
+        let bib_map: HashMap<String, String> = rendered
+            .bibliography
+            .map(|bib| {
+                bib.items
+                    .iter()
+                    .map(|bib_item| {
+                        (
+                            bib_item.key.clone(),
+                            Self::render_bib_item(bib_item, buf_format),
+                        )
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         // Match each citation to its bibliography entry by key
         let mut results = Vec::with_capacity(parsed_items.len());
 
         for (i, cite) in rendered.citations.iter().enumerate() {
-            let item_key = parsed_items[i].id()
+            let item_key = parsed_items[i]
+                .id()
                 .map(|cow| cow.into_owned())
                 .unwrap_or_else(|| format!("_citeme_batch_{i}"));
 
@@ -345,19 +384,17 @@ impl CitationEngine {
 
     /// Build a minimal citation when the CSL engine produces empty output.
     fn build_fallback(csl_json_str: &str) -> FormatResult {
-        let v: serde_json::Value = serde_json::from_str(csl_json_str)
-            .unwrap_or_default();
+        let v: serde_json::Value = serde_json::from_str(csl_json_str).unwrap_or_default();
 
-        let author = v["author"].as_array()
+        let author = v["author"]
+            .as_array()
             .and_then(|a| a.first())
-            .and_then(|a| {
-                a["literal"].as_str()
-                    .or(a["family"].as_str())
-            })
+            .and_then(|a| a["literal"].as_str().or(a["family"].as_str()))
             .or(v["container-title"].as_str())
             .unwrap_or("Unknown");
 
-        let year = v["issued"]["date-parts"].as_array()
+        let year = v["issued"]["date-parts"]
+            .as_array()
             .and_then(|dp| dp.first())
             .and_then(|parts| parts.as_array())
             .and_then(|parts| parts.first())
@@ -435,17 +472,47 @@ mod tests {
         let opts = FormatOptions::default();
         let result = engine.format_one(csl_json, "apa", "en-US", &opts).unwrap();
 
-        assert!(result.reference.contains("Smith"), "reference should contain author: {}", result.reference);
-        assert!(result.reference.contains("2024"), "reference should contain year: {}", result.reference);
-        assert!(result.reference.contains("A Study of Something"), "reference should contain title: {}", result.reference);
+        assert!(
+            result.reference.contains("Smith"),
+            "reference should contain author: {}",
+            result.reference
+        );
+        assert!(
+            result.reference.contains("2024"),
+            "reference should contain year: {}",
+            result.reference
+        );
+        assert!(
+            result.reference.contains("A Study of Something"),
+            "reference should contain title: {}",
+            result.reference
+        );
         // Hayagriva uses <span style="font-style: italic;"> rather than <i>
-        assert!(result.reference.contains("font-style: italic"), "APA reference should contain italics (HTML mode): {}", result.reference);
-        assert!(!result.reference.is_empty(), "reference should not be empty");
+        assert!(
+            result.reference.contains("font-style: italic"),
+            "APA reference should contain italics (HTML mode): {}",
+            result.reference
+        );
+        assert!(
+            !result.reference.is_empty(),
+            "reference should not be empty"
+        );
 
-        assert!(result.in_text.contains("Smith"), "in_text should contain author: {}", result.in_text);
-        assert!(result.in_text.contains("2024"), "in_text should contain year: {}", result.in_text);
-        assert!(result.in_text.contains('(') && result.in_text.contains(')'),
-            "APA in_text should have parentheses: {}", result.in_text);
+        assert!(
+            result.in_text.contains("Smith"),
+            "in_text should contain author: {}",
+            result.in_text
+        );
+        assert!(
+            result.in_text.contains("2024"),
+            "in_text should contain year: {}",
+            result.in_text
+        );
+        assert!(
+            result.in_text.contains('(') && result.in_text.contains(')'),
+            "APA in_text should have parentheses: {}",
+            result.in_text
+        );
     }
 
     #[test]
@@ -482,7 +549,10 @@ mod tests {
         // Empty code stays the explicit escape hatch: "let the style's
         // default-locale pick among the loaded files".
         let result = engine.format_one(csl_json, "apa", "", &FormatOptions::default());
-        assert!(result.is_ok(), "empty locale code must remain permitted: {result:?}");
+        assert!(
+            result.is_ok(),
+            "empty locale code must remain permitted: {result:?}"
+        );
     }
 
     #[test]
@@ -498,8 +568,13 @@ mod tests {
             "issued": {"date-parts": [[2024]]}
         }"#;
 
-        let result = engine.format_one(csl_json, "apa", "en-US", &FormatOptions::default()).unwrap();
-        assert!(!result.reference.is_empty(), "reference must never be empty");
+        let result = engine
+            .format_one(csl_json, "apa", "en-US", &FormatOptions::default())
+            .unwrap();
+        assert!(
+            !result.reference.is_empty(),
+            "reference must never be empty"
+        );
         assert!(!result.in_text.is_empty(), "in_text must never be empty");
     }
 
@@ -528,7 +603,9 @@ mod tests {
         ]"#;
 
         let opts = FormatOptions::default();
-        let results = engine.format_batch(csl_json_array, "apa", "en-US", &opts).unwrap();
+        let results = engine
+            .format_batch(csl_json_array, "apa", "en-US", &opts)
+            .unwrap();
 
         assert_eq!(results.len(), 2);
         assert!(results[0].reference.contains("Smith"));
@@ -541,7 +618,9 @@ mod tests {
         engine.load_style("apa", SAMPLE_CSL).unwrap();
         engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
 
-        let results = engine.format_batch("[]", "apa", "en-US", &FormatOptions::default()).unwrap();
+        let results = engine
+            .format_batch("[]", "apa", "en-US", &FormatOptions::default())
+            .unwrap();
         assert!(results.is_empty());
     }
 
@@ -568,7 +647,11 @@ mod tests {
         };
 
         let result = engine.format_one(csl_json, "abnt", "pt-BR", &opts).unwrap();
-        assert!(result.reference.contains("SILVA"), "ABNT reference should have uppercased family name: {}", result.reference);
+        assert!(
+            result.reference.contains("SILVA"),
+            "ABNT reference should have uppercased family name: {}",
+            result.reference
+        );
     }
 
     #[test]
@@ -594,13 +677,31 @@ mod tests {
         ]"#;
 
         let opts = FormatOptions::default();
-        let results = engine.format_batch(csl_json_array, "apa", "en-US", &opts).unwrap();
+        let results = engine
+            .format_batch(csl_json_array, "apa", "en-US", &opts)
+            .unwrap();
 
         assert_eq!(results.len(), 2);
-        assert!(!results[0].reference.is_empty(), "first item reference should not be empty: {:?}", results[0]);
-        assert!(!results[1].reference.is_empty(), "second item reference should not be empty: {:?}", results[1]);
-        assert!(results[0].reference.contains("Smith"), "first reference should contain Smith: {}", results[0].reference);
-        assert!(results[1].reference.contains("Doe"), "second reference should contain Doe: {}", results[1].reference);
+        assert!(
+            !results[0].reference.is_empty(),
+            "first item reference should not be empty: {:?}",
+            results[0]
+        );
+        assert!(
+            !results[1].reference.is_empty(),
+            "second item reference should not be empty: {:?}",
+            results[1]
+        );
+        assert!(
+            results[0].reference.contains("Smith"),
+            "first reference should contain Smith: {}",
+            results[0].reference
+        );
+        assert!(
+            results[1].reference.contains("Doe"),
+            "second reference should contain Doe: {}",
+            results[1].reference
+        );
     }
 
     #[test]
@@ -629,15 +730,26 @@ mod tests {
             }
         ]"#;
 
-        let results = engine.format_batch(csl_json_array, "apa", "en-US", &FormatOptions::default()).unwrap();
+        let results = engine
+            .format_batch(csl_json_array, "apa", "en-US", &FormatOptions::default())
+            .unwrap();
 
         assert_eq!(results.len(), 2);
-        assert!(results[0].reference.contains("Smith"),
-            "first result must render the first item: {}", results[0].reference);
-        assert!(results[1].reference.contains("Doe"),
-            "second result must render the second item, not the first: {}", results[1].reference);
-        assert!(!results[1].reference.contains("Smith"),
-            "second result must not carry the first item's reference: {}", results[1].reference);
+        assert!(
+            results[0].reference.contains("Smith"),
+            "first result must render the first item: {}",
+            results[0].reference
+        );
+        assert!(
+            results[1].reference.contains("Doe"),
+            "second result must render the second item, not the first: {}",
+            results[1].reference
+        );
+        assert!(
+            !results[1].reference.contains("Smith"),
+            "second result must not carry the first item's reference: {}",
+            results[1].reference
+        );
     }
 
     #[test]
@@ -658,13 +770,20 @@ mod tests {
             }"#;
         let csl_json_array = format!("[{item},{item}]");
 
-        let results = engine.format_batch(&csl_json_array, "apa", "en-US", &FormatOptions::default()).unwrap();
+        let results = engine
+            .format_batch(&csl_json_array, "apa", "en-US", &FormatOptions::default())
+            .unwrap();
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].reference, results[1].reference,
-            "identical duplicates must render identically");
-        assert!(!results[0].reference.contains("2024a"),
-            "identical duplicates must not trigger year-suffix disambiguation: {}", results[0].reference);
+        assert_eq!(
+            results[0].reference, results[1].reference,
+            "identical duplicates must render identically"
+        );
+        assert!(
+            !results[0].reference.contains("2024a"),
+            "identical duplicates must not trigger year-suffix disambiguation: {}",
+            results[0].reference
+        );
     }
 
     #[test]
@@ -687,16 +806,32 @@ mod tests {
             prose: true,
             ..Default::default()
         };
-        let result = engine.format_one(csl_json, "apa", "en-US", &prose_opts).unwrap();
+        let result = engine
+            .format_one(csl_json, "apa", "en-US", &prose_opts)
+            .unwrap();
 
         // Prose citation: "Smith (2024)" — author outside parens, year inside
-        assert!(!result.in_text.is_empty(), "prose in_text must not be empty");
-        assert!(result.in_text.contains("Smith"), "prose in_text should contain author: {}", result.in_text);
-        assert!(result.in_text.contains("2024"), "prose in_text should contain year: {}", result.in_text);
+        assert!(
+            !result.in_text.is_empty(),
+            "prose in_text must not be empty"
+        );
+        assert!(
+            result.in_text.contains("Smith"),
+            "prose in_text should contain author: {}",
+            result.in_text
+        );
+        assert!(
+            result.in_text.contains("2024"),
+            "prose in_text should contain year: {}",
+            result.in_text
+        );
         // Positive: prose form starts with bare author name
         let stripped = result.in_text.replace("<span", "").replace("</span>", "");
-        assert!(!stripped.trim_start().starts_with('('),
-            "prose in_text should start with bare author, not '(' — got: {}", result.in_text);
+        assert!(
+            !stripped.trim_start().starts_with('('),
+            "prose in_text should start with bare author, not '(' — got: {}",
+            result.in_text
+        );
     }
 
     #[test]
@@ -731,7 +866,10 @@ mod tests {
         engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
 
         let csl_json = r#"{"id":"x","type":"article-journal","issued":{"date-parts":[[2018]]}}"#;
-        let opts = FormatOptions { output_format: OutputFormat::Plain, ..Default::default() };
+        let opts = FormatOptions {
+            output_format: OutputFormat::Plain,
+            ..Default::default()
+        };
         let out = engine.format_one(csl_json, "t", "en-US", &opts).unwrap();
         assert!(
             !out.reference.contains(" ;"),
@@ -772,23 +910,49 @@ mod tests {
             prose: true,
             ..Default::default()
         };
-        let results = engine.format_batch(csl_json_array, "apa", "en-US", &prose_opts).unwrap();
+        let results = engine
+            .format_batch(csl_json_array, "apa", "en-US", &prose_opts)
+            .unwrap();
 
         assert_eq!(results.len(), 2);
         // Both must be non-empty
-        assert!(!results[0].in_text.is_empty(), "first prose citation must not be empty");
-        assert!(!results[1].in_text.is_empty(), "second prose citation must not be empty");
+        assert!(
+            !results[0].in_text.is_empty(),
+            "first prose citation must not be empty"
+        );
+        assert!(
+            !results[1].in_text.is_empty(),
+            "second prose citation must not be empty"
+        );
         // Positive: contains author names
-        assert!(results[0].in_text.contains("Smith"),
-            "first prose citation should contain Smith: {}", results[0].in_text);
-        assert!(results[1].in_text.contains("Doe"),
-            "second prose citation should contain Doe: {}", results[1].in_text);
+        assert!(
+            results[0].in_text.contains("Smith"),
+            "first prose citation should contain Smith: {}",
+            results[0].in_text
+        );
+        assert!(
+            results[1].in_text.contains("Doe"),
+            "second prose citation should contain Doe: {}",
+            results[1].in_text
+        );
         // Negative: should not be parenthetical form
-        let s0 = results[0].in_text.replace("<span", "").replace("</span>", "");
-        let s1 = results[1].in_text.replace("<span", "").replace("</span>", "");
-        assert!(!s0.trim_start().starts_with('('),
-            "first prose citation should not be parenthetical: {}", results[0].in_text);
-        assert!(!s1.trim_start().starts_with('('),
-            "second prose citation should not be parenthetical: {}", results[1].in_text);
+        let s0 = results[0]
+            .in_text
+            .replace("<span", "")
+            .replace("</span>", "");
+        let s1 = results[1]
+            .in_text
+            .replace("<span", "")
+            .replace("</span>", "");
+        assert!(
+            !s0.trim_start().starts_with('('),
+            "first prose citation should not be parenthetical: {}",
+            results[0].in_text
+        );
+        assert!(
+            !s1.trim_start().starts_with('('),
+            "second prose citation should not be parenthetical: {}",
+            results[1].in_text
+        );
     }
 }

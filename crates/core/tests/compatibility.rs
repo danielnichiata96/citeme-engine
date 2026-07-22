@@ -55,11 +55,11 @@ fn normalize_to_plain(s: &str) -> String {
 
     // Normalize all quote variants to ASCII single quote
     // (locale-specific quote style is not a semantic difference)
-    out = out.replace('\u{2018}', "'");  // left single
-    out = out.replace('\u{2019}', "'");  // right single
-    out = out.replace('\u{201C}', "'");  // left double → single
-    out = out.replace('\u{201D}', "'");  // right double → single
-    out = out.replace('"', "'");         // ASCII double → single
+    out = out.replace('\u{2018}', "'"); // left single
+    out = out.replace('\u{2019}', "'"); // right single
+    out = out.replace('\u{201C}', "'"); // left double → single
+    out = out.replace('\u{201D}', "'"); // right double → single
+    out = out.replace('"', "'"); // ASCII double → single
 
     // Normalize comma/period + quote order (British vs American punctuation)
     out = out.replace(",'", "',");
@@ -83,7 +83,12 @@ fn strip_a_tags(s: &str) -> String {
                 let after = start + close_open + 1;
                 if let Some(end) = out[after..].find("</a>") {
                     let text = out[after..after + end].to_string();
-                    out = format!("{}{}{}", &out[..start], text, &out[after + end + "</a>".len()..]);
+                    out = format!(
+                        "{}{}{}",
+                        &out[..start],
+                        text,
+                        &out[after + end + "</a>".len()..]
+                    );
                     continue;
                 }
             }
@@ -117,7 +122,10 @@ fn test_normalize_to_plain() {
     );
 
     // Decode HTML entities
-    assert_eq!(normalize_to_plain("Smith, J. A., &#38; Doe"), "Smith, J. A., & Doe");
+    assert_eq!(
+        normalize_to_plain("Smith, J. A., &#38; Doe"),
+        "Smith, J. A., & Doe"
+    );
 
     // Strip <a> links to just text
     assert_eq!(
@@ -128,15 +136,20 @@ fn test_normalize_to_plain() {
     // Combined: citation-js plain text vs Hayagriva HTML should match
     let citation_js_plain = "Smith, J. A., & Doe, J. B. (2024). Title. Journal, 42(3), 100–115.";
     let hayagriva_html = r#"Smith, J. A., & Doe, J. B. (2024). Title. <span style="font-style: italic;">Journal</span>, <span style="font-style: italic;">42</span>(3), 100–115."#;
-    assert_eq!(normalize_to_plain(citation_js_plain), normalize_to_plain(hayagriva_html));
+    assert_eq!(
+        normalize_to_plain(citation_js_plain),
+        normalize_to_plain(hayagriva_html)
+    );
 }
 
 #[test]
 fn test_compatibility_fixtures() {
     // Paths relative to workspace root (2 levels up from crates/core/)
     let ws_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()  // crates/
-        .parent().unwrap(); // workspace root
+        .parent()
+        .unwrap() // crates/
+        .parent()
+        .unwrap(); // workspace root
     let fixture_dir = ws_root.join("tests/fixtures/compatibility");
     let style_dir = ws_root.join("tests/fixtures/styles");
     let locale_dir = ws_root.join("tests/fixtures/locales");
@@ -146,7 +159,7 @@ fn test_compatibility_fixtures() {
     // Pre-load styles used by fixtures
     for style_file in fs::read_dir(&style_dir).unwrap() {
         let path = style_file.unwrap().path();
-        if path.extension().map_or(false, |e| e == "csl") {
+        if path.extension().is_some_and(|e| e == "csl") {
             let name = path.file_stem().unwrap().to_str().unwrap();
             let xml = fs::read_to_string(&path).unwrap();
             engine.load_style(name, &xml).unwrap();
@@ -158,7 +171,11 @@ fn test_compatibility_fixtures() {
         let path = locale_file.unwrap().path();
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             if name.starts_with("locales-") && name.ends_with(".xml") {
-                let code = name.strip_prefix("locales-").unwrap().strip_suffix(".xml").unwrap();
+                let code = name
+                    .strip_prefix("locales-")
+                    .unwrap()
+                    .strip_suffix(".xml")
+                    .unwrap();
                 let xml = fs::read_to_string(&path).unwrap();
                 engine.load_locale(code, &xml).unwrap();
             }
@@ -172,7 +189,7 @@ fn test_compatibility_fixtures() {
 
     for entry in fs::read_dir(&fixture_dir).unwrap() {
         let path = entry.unwrap().path();
-        if path.extension().map_or(true, |e| e != "json") {
+        if path.extension().is_none_or(|e| e != "json") {
             continue;
         }
 
@@ -196,11 +213,17 @@ fn test_compatibility_fixtures() {
                     failed += 1;
                     let mut msg = format!("FAIL: {} ({})\n", fixture.description, path.display());
                     if !ref_match {
-                        msg.push_str(&format!("  reference expected: {}\n", fixture.expected.reference));
+                        msg.push_str(&format!(
+                            "  reference expected: {}\n",
+                            fixture.expected.reference
+                        ));
                         msg.push_str(&format!("  reference actual:   {}\n", result.reference));
                     }
                     if !cite_match {
-                        msg.push_str(&format!("  inText expected: {}\n", fixture.expected.in_text));
+                        msg.push_str(&format!(
+                            "  inText expected: {}\n",
+                            fixture.expected.in_text
+                        ));
                         msg.push_str(&format!("  inText actual:   {}\n", result.in_text));
                     }
                     failures.push(msg);
@@ -214,7 +237,11 @@ fn test_compatibility_fixtures() {
     }
 
     let total = passed + failed;
-    let pass_rate = if total > 0 { (passed as f64 / total as f64) * 100.0 } else { 0.0 };
+    let pass_rate = if total > 0 {
+        (passed as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
 
     println!("\nCompatibility results: {passed} passed, {failed} failed");
     println!("Compatibility: {passed}/{total} ({pass_rate:.0}%)");
@@ -226,11 +253,15 @@ fn test_compatibility_fixtures() {
         }
     }
 
-    assert!(total >= 27,
+    assert!(
+        total >= 27,
         "GATE FAIL: only {total} fixtures found — need at least 27 \
-         (7 styles × ~4 types each).");
+         (7 styles × ~4 types each)."
+    );
 
-    assert!(pass_rate >= 90.0,
+    assert!(
+        pass_rate >= 90.0,
         "GATE FAIL: parity {pass_rate:.0}% < 90% threshold. \
-         {failed} fixture(s) diverge from citation-js output.");
+         {failed} fixture(s) diverge from citation-js output."
+    );
 }

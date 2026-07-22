@@ -43,7 +43,9 @@ pub fn csl_json_to_ris(item: &Value) -> String {
     }
 
     // Title
-    if let Some(v) = item["title"].as_str() { lines.push(format!("TI  - {v}")); }
+    if let Some(v) = item["title"].as_str() {
+        lines.push(format!("TI  - {v}"));
+    }
 
     // Journal / container
     if let Some(v) = item["container-title"].as_str() {
@@ -60,10 +62,8 @@ pub fn csl_json_to_ris(item: &Value) -> String {
             let year = parts.first().and_then(|y| y.as_i64()).unwrap_or(0);
             if year > 0 {
                 lines.push(format!("PY  - {year}///"));
-                let month = parts.get(1).and_then(|m| m.as_i64());
                 let day = parts.get(2).and_then(|d| d.as_i64());
-                if month.is_some() {
-                    let m = month.unwrap();
+                if let Some(m) = parts.get(1).and_then(|m| m.as_i64()) {
                     let d_str = day.map(|d| format!("{d:02}")).unwrap_or_default();
                     lines.push(format!("DA  - {year}/{m:02}/{d_str}/"));
                 }
@@ -72,12 +72,16 @@ pub fn csl_json_to_ris(item: &Value) -> String {
     }
 
     // Volume, issue
-    if let Some(v) = item["volume"].as_str() { lines.push(format!("VL  - {v}")); }
-    if let Some(v) = item["issue"].as_str() { lines.push(format!("IS  - {v}")); }
+    if let Some(v) = item["volume"].as_str() {
+        lines.push(format!("VL  - {v}"));
+    }
+    if let Some(v) = item["issue"].as_str() {
+        lines.push(format!("IS  - {v}"));
+    }
 
     // Pages: split "100-115" into SP/EP
     if let Some(pages) = item["page"].as_str() {
-        let parts: Vec<&str> = pages.splitn(2, |c| c == '-' || c == '–').collect();
+        let parts: Vec<&str> = pages.splitn(2, ['-', '–']).collect();
         if let Some(sp) = parts.first() {
             lines.push(format!("SP  - {}", sp.trim()));
         }
@@ -87,20 +91,36 @@ pub fn csl_json_to_ris(item: &Value) -> String {
     }
 
     // Identifiers
-    if let Some(v) = item["DOI"].as_str() { lines.push(format!("DO  - {v}")); }
-    if let Some(v) = item["URL"].as_str() { lines.push(format!("UR  - {v}")); }
-    if let Some(v) = item["ISSN"].as_str() { lines.push(format!("SN  - {v}")); }
-    if let Some(v) = item["ISBN"].as_str() { lines.push(format!("SN  - {v}")); }
+    if let Some(v) = item["DOI"].as_str() {
+        lines.push(format!("DO  - {v}"));
+    }
+    if let Some(v) = item["URL"].as_str() {
+        lines.push(format!("UR  - {v}"));
+    }
+    if let Some(v) = item["ISSN"].as_str() {
+        lines.push(format!("SN  - {v}"));
+    }
+    if let Some(v) = item["ISBN"].as_str() {
+        lines.push(format!("SN  - {v}"));
+    }
 
     // Publisher
-    if let Some(v) = item["publisher"].as_str() { lines.push(format!("PB  - {v}")); }
-    if let Some(v) = item["publisher-place"].as_str() { lines.push(format!("CY  - {v}")); }
+    if let Some(v) = item["publisher"].as_str() {
+        lines.push(format!("PB  - {v}"));
+    }
+    if let Some(v) = item["publisher-place"].as_str() {
+        lines.push(format!("CY  - {v}"));
+    }
 
     // Abstract
-    if let Some(v) = item["abstract"].as_str() { lines.push(format!("AB  - {v}")); }
+    if let Some(v) = item["abstract"].as_str() {
+        lines.push(format!("AB  - {v}"));
+    }
 
     // Language
-    if let Some(v) = item["language"].as_str() { lines.push(format!("LA  - {v}")); }
+    if let Some(v) = item["language"].as_str() {
+        lines.push(format!("LA  - {v}"));
+    }
 
     // Keywords — split the normalized comma-separated form (which covers
     // both v1.0.1 string and v1.0.2 array inputs) into one `KW` tag per item.
@@ -121,8 +141,9 @@ pub fn csl_json_to_ris(item: &Value) -> String {
 
 /// Convert multiple CSL-JSON items to a RIS file string.
 pub fn csl_json_array_to_ris(items: &[Value]) -> String {
-    let mut out = items.iter()
-        .map(|item| csl_json_to_ris(item))
+    let mut out = items
+        .iter()
+        .map(csl_json_to_ris)
         .collect::<Vec<_>>()
         .join("\n\n");
     out.push('\n');
@@ -150,10 +171,19 @@ mod tests {
 
         let ris = csl_json_to_ris(&item);
         assert!(ris.starts_with("TY  - JOUR"), "should start with TY: {ris}");
-        assert!(ris.contains("AU  - Smith, John"), "should have author: {ris}");
-        assert!(ris.contains("AU  - Doe, Jane"), "should have second author: {ris}");
+        assert!(
+            ris.contains("AU  - Smith, John"),
+            "should have author: {ris}"
+        );
+        assert!(
+            ris.contains("AU  - Doe, Jane"),
+            "should have second author: {ris}"
+        );
         assert!(ris.contains("TI  - A Study"), "should have title: {ris}");
-        assert!(ris.contains("JO  - Journal of Testing"), "should have journal: {ris}");
+        assert!(
+            ris.contains("JO  - Journal of Testing"),
+            "should have journal: {ris}"
+        );
         assert!(ris.contains("SP  - 100"), "should have start page: {ris}");
         assert!(ris.contains("EP  - 115"), "should have end page: {ris}");
         assert!(ris.ends_with("ER  - "), "should end with ER: {ris}");
@@ -171,7 +201,10 @@ mod tests {
 
         let ris = csl_json_to_ris(&item);
         assert!(ris.contains("TY  - BOOK"), "should be BOOK: {ris}");
-        assert!(ris.contains("PB  - Anchor Books"), "should have publisher: {ris}");
+        assert!(
+            ris.contains("PB  - Anchor Books"),
+            "should have publisher: {ris}"
+        );
     }
 
     #[test]
@@ -191,12 +224,22 @@ mod tests {
     #[test]
     fn test_roundtrip_ris() {
         let input = "TY  - JOUR\nAU  - Smith, John\nTI  - Test Title\nJO  - Nature\nPY  - 2024\nVL  - 1\nSP  - 10\nEP  - 20\nDO  - 10.1234/test\nER  - ";
-        let parsed = crate::parsers::ris::parse_ris(input, &crate::parsers::ParseOptions::default());
+        let parsed =
+            crate::parsers::ris::parse_ris(input, &crate::parsers::ParseOptions::default());
         assert_eq!(parsed.entries.len(), 1);
 
         let exported = csl_json_to_ris(&parsed.entries[0]);
-        assert!(exported.contains("Smith"), "author should survive roundtrip: {exported}");
-        assert!(exported.contains("Test Title"), "title should survive roundtrip: {exported}");
-        assert!(exported.contains("2024"), "year should survive roundtrip: {exported}");
+        assert!(
+            exported.contains("Smith"),
+            "author should survive roundtrip: {exported}"
+        );
+        assert!(
+            exported.contains("Test Title"),
+            "title should survive roundtrip: {exported}"
+        );
+        assert!(
+            exported.contains("2024"),
+            "year should survive roundtrip: {exported}"
+        );
     }
 }

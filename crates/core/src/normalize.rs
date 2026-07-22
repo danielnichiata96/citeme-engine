@@ -224,7 +224,11 @@ fn inject_date_part_prefixes(body: &str, delim: &str) -> String {
             out.push_str(tag);
         } else {
             let self_closing = tag.ends_with("/>");
-            let cut = if self_closing { tag.len() - 2 } else { tag.len() - 1 };
+            let cut = if self_closing {
+                tag.len() - 2
+            } else {
+                tag.len() - 1
+            };
             out.push_str(&tag[..cut]);
             out.push_str(" prefix=\"");
             // The delimiter value was extracted verbatim from a quoted XML
@@ -274,10 +278,18 @@ mod tests {
   <date-part name="day"/>
 </date>"#;
         let out = normalize_csl_xml(xml);
-        assert!(!out.contains("delimiter="), "delimiter attr should be stripped: {out}");
-        assert!(out.contains(r#"<date-part name="year"/>"#), "first date-part unchanged: {out}");
         assert!(
-            out.contains(r#"<date-part name="month" form="short" strip-periods="true" prefix=" "/>"#),
+            !out.contains("delimiter="),
+            "delimiter attr should be stripped: {out}"
+        );
+        assert!(
+            out.contains(r#"<date-part name="year"/>"#),
+            "first date-part unchanged: {out}"
+        );
+        assert!(
+            out.contains(
+                r#"<date-part name="month" form="short" strip-periods="true" prefix=" "/>"#
+            ),
             "month gets prefix: {out}"
         );
         assert!(
@@ -306,7 +318,10 @@ mod tests {
   <date-part name="month" prefix="@"/>
 </date>"#;
         let out = normalize_csl_xml(xml);
-        assert!(out.contains(r#"<date-part name="month" prefix="@"/>"#), "existing prefix wins: {out}");
+        assert!(
+            out.contains(r#"<date-part name="month" prefix="@"/>"#),
+            "existing prefix wins: {out}"
+        );
         assert!(!out.contains("delimiter="));
     }
 
@@ -335,7 +350,10 @@ mod tests {
 </date>"#;
         let out = normalize_csl_xml(xml);
         assert!(!out.contains("delimiter="), "delimiter stripped: {out}");
-        assert!(out.contains(r#"<date-part name="month" prefix=" "/>"#), "month gets prefix: {out}");
+        assert!(
+            out.contains(r#"<date-part name="month" prefix=" "/>"#),
+            "month gets prefix: {out}"
+        );
     }
 
     #[test]
@@ -346,8 +364,14 @@ mod tests {
 <date delimiter="/"><date-part name="day"/><date-part name="year"/></date>
 </style>"#;
         let out = normalize_csl_xml(xml);
-        assert!(out.contains(r#"<date-part name="month" prefix=" "/>"#), "first date rewritten: {out}");
-        assert!(out.contains(r#"<date-part name="year" prefix="/"/>"#), "second date rewritten: {out}");
+        assert!(
+            out.contains(r#"<date-part name="month" prefix=" "/>"#),
+            "first date rewritten: {out}"
+        );
+        assert!(
+            out.contains(r#"<date-part name="year" prefix="/"/>"#),
+            "second date rewritten: {out}"
+        );
     }
 
     #[test]
@@ -371,8 +395,14 @@ mod tests {
         let xml = "<date prefix=\"d\u{e9}pos\u{e9} le \" delimiter=\" \">\n  <date-part name=\"year\"/>\n  <date-part name=\"month\"/>\n</date>";
         let out = normalize_csl_xml(xml);
         assert!(!out.contains("delimiter="), "delimiter stripped: {out}");
-        assert!(out.contains("prefix=\"d\u{e9}pos\u{e9} le \""), "date prefix preserved: {out}");
-        assert!(out.contains(r#"<date-part name="month" prefix=" "/>"#), "month gets prefix: {out}");
+        assert!(
+            out.contains("prefix=\"d\u{e9}pos\u{e9} le \""),
+            "date prefix preserved: {out}"
+        );
+        assert!(
+            out.contains(r#"<date-part name="month" prefix=" "/>"#),
+            "month gets prefix: {out}"
+        );
     }
 
     #[test]

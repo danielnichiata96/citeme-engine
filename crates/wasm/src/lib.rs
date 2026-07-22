@@ -1,6 +1,6 @@
-use wasm_bindgen::prelude::*;
 use citeme_engine_core::engine::CitationEngine;
 use citeme_engine_core::types::{FormatOptions, OutputFormat, RESULT_SHAPE_VERSION};
+use wasm_bindgen::prelude::*;
 
 /// Version of every JSON shape this module returns (FormatResult,
 /// ParseResult, …). Consumers that validate the engine's JSON against their
@@ -28,6 +28,9 @@ pub struct WasmCitationEngine {
     inner: CitationEngine,
 }
 
+// `Default` has no meaning across the wasm-bindgen boundary — JS always
+// goes through the constructor.
+#[allow(clippy::new_without_default)]
 #[wasm_bindgen]
 impl WasmCitationEngine {
     /// Create a new engine instance.
@@ -43,14 +46,16 @@ impl WasmCitationEngine {
     /// Load a CSL style from XML string. Compiled and cached.
     #[wasm_bindgen(js_name = "loadStyle")]
     pub fn load_style(&mut self, name: &str, csl_xml: &str) -> Result<(), JsError> {
-        self.inner.load_style(name, csl_xml)
+        self.inner
+            .load_style(name, csl_xml)
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
     /// Load a locale from XML string.
     #[wasm_bindgen(js_name = "loadLocale")]
     pub fn load_locale(&mut self, locale_code: &str, locale_xml: &str) -> Result<(), JsError> {
-        self.inner.load_locale(locale_code, locale_xml)
+        self.inner
+            .load_locale(locale_code, locale_xml)
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
@@ -82,11 +87,12 @@ impl WasmCitationEngine {
             prose: false,
         };
 
-        let results = self.inner.format_batch(csl_json_str, style_name, locale_code, &options)
+        let results = self
+            .inner
+            .format_batch(csl_json_str, style_name, locale_code, &options)
             .map_err(|e| JsError::new(&e.to_string()))?;
 
-        serde_json::to_string(&results)
-            .map_err(|e| JsError::new(&e.to_string()))
+        serde_json::to_string(&results).map_err(|e| JsError::new(&e.to_string()))
     }
 
     /// Format a single CSL-JSON item.
@@ -105,11 +111,12 @@ impl WasmCitationEngine {
             prose: false,
         };
 
-        let result = self.inner.format_one(csl_json_str, style_name, locale_code, &options)
+        let result = self
+            .inner
+            .format_one(csl_json_str, style_name, locale_code, &options)
             .map_err(|e| JsError::new(&e.to_string()))?;
 
-        serde_json::to_string(&result)
-            .map_err(|e| JsError::new(&e.to_string()))
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     }
 
     /// Format a single CSL-JSON item with an explicit output format.
@@ -132,11 +139,12 @@ impl WasmCitationEngine {
             prose,
         };
 
-        let result = self.inner.format_one(csl_json_str, style_name, locale_code, &options)
+        let result = self
+            .inner
+            .format_one(csl_json_str, style_name, locale_code, &options)
             .map_err(|e| JsError::new(&e.to_string()))?;
 
-        serde_json::to_string(&result)
-            .map_err(|e| JsError::new(&e.to_string()))
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     }
 
     /// Format a single CSL-JSON item as a narrative/prose citation ("Smith (2024)").
@@ -155,11 +163,12 @@ impl WasmCitationEngine {
             prose: true,
         };
 
-        let result = self.inner.format_one(csl_json_str, style_name, locale_code, &options)
+        let result = self
+            .inner
+            .format_one(csl_json_str, style_name, locale_code, &options)
             .map_err(|e| JsError::new(&e.to_string()))?;
 
-        serde_json::to_string(&result)
-            .map_err(|e| JsError::new(&e.to_string()))
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     }
 
     /// Format a batch of CSL-JSON items as narrative/prose citations ("Smith (2024)").
@@ -178,11 +187,12 @@ impl WasmCitationEngine {
             prose: true,
         };
 
-        let results = self.inner.format_batch(csl_json_str, style_name, locale_code, &options)
+        let results = self
+            .inner
+            .format_batch(csl_json_str, style_name, locale_code, &options)
             .map_err(|e| JsError::new(&e.to_string()))?;
 
-        serde_json::to_string(&results)
-            .map_err(|e| JsError::new(&e.to_string()))
+        serde_json::to_string(&results).map_err(|e| JsError::new(&e.to_string()))
     }
 
     /// Format a batch of CSL-JSON items with an explicit output format.
@@ -205,11 +215,12 @@ impl WasmCitationEngine {
             prose,
         };
 
-        let results = self.inner.format_batch(csl_json_str, style_name, locale_code, &options)
+        let results = self
+            .inner
+            .format_batch(csl_json_str, style_name, locale_code, &options)
             .map_err(|e| JsError::new(&e.to_string()))?;
 
-        serde_json::to_string(&results)
-            .map_err(|e| JsError::new(&e.to_string()))
+        serde_json::to_string(&results).map_err(|e| JsError::new(&e.to_string()))
     }
 
     /// Parse BibTeX content and return CSL-JSON array.
@@ -237,7 +248,9 @@ impl WasmCitationEngine {
     /// Detect input format (returns "bibtex", "ris", "csl-json", or "unknown").
     #[wasm_bindgen(js_name = "detectFormat")]
     pub fn detect_format(&self, input: &str) -> String {
-        citeme_engine_core::parsers::detect::detect_format(input).as_str().to_string()
+        citeme_engine_core::parsers::detect::detect_format(input)
+            .as_str()
+            .to_string()
     }
 
     /// Auto-detect format and parse. Returns JSON string of ParseResult.
@@ -250,10 +263,16 @@ impl WasmCitationEngine {
             ..Default::default()
         };
         let result = match format {
-            InputFormat::Bibtex => citeme_engine_core::parsers::bibtex::parse_bibtex(input, &options),
+            InputFormat::Bibtex => {
+                citeme_engine_core::parsers::bibtex::parse_bibtex(input, &options)
+            }
             InputFormat::Ris => citeme_engine_core::parsers::ris::parse_ris(input, &options),
-            InputFormat::CslJson => citeme_engine_core::parsers::csl_json::parse_csl_json(input, &options),
-            InputFormat::Medline => citeme_engine_core::parsers::medline::parse_medline(input, &options),
+            InputFormat::CslJson => {
+                citeme_engine_core::parsers::csl_json::parse_csl_json(input, &options)
+            }
+            InputFormat::Medline => {
+                citeme_engine_core::parsers::medline::parse_medline(input, &options)
+            }
             InputFormat::Unknown => citeme_engine_core::parsers::ParseResult {
                 entries: vec![],
                 errors: vec![citeme_engine_core::parsers::ParseErrorInfo {
@@ -270,7 +289,11 @@ impl WasmCitationEngine {
 
     /// Validate and pass through CSL-JSON input. Accepts single object or array.
     #[wasm_bindgen(js_name = "parseCslJson")]
-    pub fn parse_csl_json(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
+    pub fn parse_csl_json(
+        &self,
+        input: &str,
+        max_entries: Option<usize>,
+    ) -> Result<String, JsError> {
         let options = citeme_engine_core::parsers::ParseOptions {
             max_entries,
             ..Default::default()
@@ -281,7 +304,11 @@ impl WasmCitationEngine {
 
     /// Parse MEDLINE/NBIB content and return CSL-JSON array.
     #[wasm_bindgen(js_name = "parseMedline")]
-    pub fn parse_medline(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
+    pub fn parse_medline(
+        &self,
+        input: &str,
+        max_entries: Option<usize>,
+    ) -> Result<String, JsError> {
         let options = citeme_engine_core::parsers::ParseOptions {
             max_entries,
             ..Default::default()
@@ -293,11 +320,15 @@ impl WasmCitationEngine {
     /// Export CSL-JSON to BibTeX string. Input: JSON string (object or array).
     #[wasm_bindgen(js_name = "exportBibtex")]
     pub fn export_bibtex(&self, csl_json_str: &str) -> Result<String, JsError> {
-        let value: serde_json::Value = serde_json::from_str(csl_json_str)
-            .map_err(|e| JsError::new(&e.to_string()))?;
+        let value: serde_json::Value =
+            serde_json::from_str(csl_json_str).map_err(|e| JsError::new(&e.to_string()))?;
         match value {
-            serde_json::Value::Array(items) => Ok(citeme_engine_core::export::bibtex::csl_json_array_to_bibtex(&items)),
-            obj @ serde_json::Value::Object(_) => Ok(citeme_engine_core::export::bibtex::csl_json_to_bibtex(&obj)),
+            serde_json::Value::Array(items) => {
+                Ok(citeme_engine_core::export::bibtex::csl_json_array_to_bibtex(&items))
+            }
+            obj @ serde_json::Value::Object(_) => {
+                Ok(citeme_engine_core::export::bibtex::csl_json_to_bibtex(&obj))
+            }
             _ => Err(JsError::new("expected JSON object or array")),
         }
     }
@@ -305,11 +336,15 @@ impl WasmCitationEngine {
     /// Export CSL-JSON to RIS string. Input: JSON string (object or array).
     #[wasm_bindgen(js_name = "exportRis")]
     pub fn export_ris(&self, csl_json_str: &str) -> Result<String, JsError> {
-        let value: serde_json::Value = serde_json::from_str(csl_json_str)
-            .map_err(|e| JsError::new(&e.to_string()))?;
+        let value: serde_json::Value =
+            serde_json::from_str(csl_json_str).map_err(|e| JsError::new(&e.to_string()))?;
         match value {
-            serde_json::Value::Array(items) => Ok(citeme_engine_core::export::ris::csl_json_array_to_ris(&items)),
-            obj @ serde_json::Value::Object(_) => Ok(citeme_engine_core::export::ris::csl_json_to_ris(&obj)),
+            serde_json::Value::Array(items) => Ok(
+                citeme_engine_core::export::ris::csl_json_array_to_ris(&items),
+            ),
+            obj @ serde_json::Value::Object(_) => {
+                Ok(citeme_engine_core::export::ris::csl_json_to_ris(&obj))
+            }
             _ => Err(JsError::new("expected JSON object or array")),
         }
     }
@@ -317,11 +352,15 @@ impl WasmCitationEngine {
     /// Export CSL-JSON to BibLaTeX string. Input: JSON string (object or array).
     #[wasm_bindgen(js_name = "exportBiblatex")]
     pub fn export_biblatex(&self, csl_json_str: &str) -> Result<String, JsError> {
-        let value: serde_json::Value = serde_json::from_str(csl_json_str)
-            .map_err(|e| JsError::new(&e.to_string()))?;
+        let value: serde_json::Value =
+            serde_json::from_str(csl_json_str).map_err(|e| JsError::new(&e.to_string()))?;
         match value {
-            serde_json::Value::Array(items) => Ok(citeme_engine_core::export::biblatex::csl_json_array_to_biblatex(&items)),
-            obj @ serde_json::Value::Object(_) => Ok(citeme_engine_core::export::biblatex::csl_json_to_biblatex(&obj)),
+            serde_json::Value::Array(items) => {
+                Ok(citeme_engine_core::export::biblatex::csl_json_array_to_biblatex(&items))
+            }
+            obj @ serde_json::Value::Object(_) => Ok(
+                citeme_engine_core::export::biblatex::csl_json_to_biblatex(&obj),
+            ),
             _ => Err(JsError::new("expected JSON object or array")),
         }
     }
@@ -329,11 +368,15 @@ impl WasmCitationEngine {
     /// Export CSL-JSON to Hayagriva YAML string. Input: JSON string (object or array).
     #[wasm_bindgen(js_name = "exportHayagriva")]
     pub fn export_hayagriva(&self, csl_json_str: &str) -> Result<String, JsError> {
-        let value: serde_json::Value = serde_json::from_str(csl_json_str)
-            .map_err(|e| JsError::new(&e.to_string()))?;
+        let value: serde_json::Value =
+            serde_json::from_str(csl_json_str).map_err(|e| JsError::new(&e.to_string()))?;
         match value {
-            serde_json::Value::Array(items) => Ok(citeme_engine_core::export::hayagriva::csl_json_array_to_hayagriva(&items)),
-            obj @ serde_json::Value::Object(_) => Ok(citeme_engine_core::export::hayagriva::csl_json_to_hayagriva(&obj)),
+            serde_json::Value::Array(items) => {
+                Ok(citeme_engine_core::export::hayagriva::csl_json_array_to_hayagriva(&items))
+            }
+            obj @ serde_json::Value::Object(_) => {
+                Ok(citeme_engine_core::export::hayagriva::csl_json_to_hayagriva(&obj))
+            }
             _ => Err(JsError::new("expected JSON object or array")),
         }
     }

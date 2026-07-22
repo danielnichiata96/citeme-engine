@@ -1,11 +1,13 @@
-use criterion::{criterion_group, criterion_main, Criterion};
 use citeme_engine_core::engine::CitationEngine;
 use citeme_engine_core::types::FormatOptions;
+use criterion::{criterion_group, criterion_main, Criterion};
 
 fn setup_engine() -> CitationEngine {
     let ws_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
     let style_dir = ws_root.join("tests/fixtures/styles");
     let locale_dir = ws_root.join("tests/fixtures/locales");
 
@@ -14,7 +16,7 @@ fn setup_engine() -> CitationEngine {
     // Load all available styles
     for entry in std::fs::read_dir(&style_dir).unwrap() {
         let path = entry.unwrap().path();
-        if path.extension().map_or(false, |e| e == "csl") {
+        if path.extension().is_some_and(|e| e == "csl") {
             let name = path.file_stem().unwrap().to_str().unwrap().to_string();
             let xml = std::fs::read_to_string(&path).unwrap();
             engine.load_style(&name, &xml).unwrap();
@@ -26,7 +28,11 @@ fn setup_engine() -> CitationEngine {
         let path = entry.unwrap().path();
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             if name.starts_with("locales-") && name.ends_with(".xml") {
-                let code = name.strip_prefix("locales-").unwrap().strip_suffix(".xml").unwrap();
+                let code = name
+                    .strip_prefix("locales-")
+                    .unwrap()
+                    .strip_suffix(".xml")
+                    .unwrap();
                 let xml = std::fs::read_to_string(&path).unwrap();
                 engine.load_locale(code, &xml).unwrap();
             }
@@ -90,14 +96,19 @@ fn bench_format_batch_50(c: &mut Criterion) {
     let opts = FormatOptions::default();
 
     let ws_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap();
-    let batch_json = std::fs::read_to_string(
-        ws_root.join("tests/fixtures/samples/batch-50.json")
-    ).unwrap();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let batch_json =
+        std::fs::read_to_string(ws_root.join("tests/fixtures/samples/batch-50.json")).unwrap();
 
     c.bench_function("format_batch_50_apa", |b| {
-        b.iter(|| engine.format_batch(&batch_json, "apa", "en-US", &opts).unwrap())
+        b.iter(|| {
+            engine
+                .format_batch(&batch_json, "apa", "en-US", &opts)
+                .unwrap()
+        })
     });
 }
 
@@ -106,11 +117,14 @@ fn bench_format_batch_sizes(c: &mut Criterion) {
     let opts = FormatOptions::default();
 
     let ws_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
     let all_items: Vec<serde_json::Value> = serde_json::from_str(
-        &std::fs::read_to_string(ws_root.join("tests/fixtures/samples/batch-50.json")).unwrap()
-    ).unwrap();
+        &std::fs::read_to_string(ws_root.join("tests/fixtures/samples/batch-50.json")).unwrap(),
+    )
+    .unwrap();
 
     let mut group = c.benchmark_group("format_batch_sizes");
     for size in [1, 5, 10, 25, 50] {
@@ -126,15 +140,15 @@ fn bench_format_batch_sizes(c: &mut Criterion) {
 
 fn bench_parse_bibtex(c: &mut Criterion) {
     let ws_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
 
-    let small_bib = std::fs::read_to_string(
-        ws_root.join("tests/fixtures/samples/sample.bib")
-    ).unwrap();
-    let large_bib = std::fs::read_to_string(
-        ws_root.join("tests/fixtures/samples/large-1000.bib")
-    ).unwrap();
+    let small_bib =
+        std::fs::read_to_string(ws_root.join("tests/fixtures/samples/sample.bib")).unwrap();
+    let large_bib =
+        std::fs::read_to_string(ws_root.join("tests/fixtures/samples/large-1000.bib")).unwrap();
 
     let default_opts = citeme_engine_core::parsers::ParseOptions::default();
 
@@ -153,12 +167,12 @@ fn bench_parse_bibtex(c: &mut Criterion) {
 
 fn bench_parse_ris(c: &mut Criterion) {
     let ws_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
 
-    let ris = std::fs::read_to_string(
-        ws_root.join("tests/fixtures/samples/sample.ris")
-    ).unwrap();
+    let ris = std::fs::read_to_string(ws_root.join("tests/fixtures/samples/sample.ris")).unwrap();
 
     let default_opts = citeme_engine_core::parsers::ParseOptions::default();
 
@@ -169,11 +183,11 @@ fn bench_parse_ris(c: &mut Criterion) {
 
 fn bench_style_loading(c: &mut Criterion) {
     let ws_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap();
-    let apa_xml = std::fs::read_to_string(
-        ws_root.join("tests/fixtures/styles/apa.csl")
-    ).unwrap();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let apa_xml = std::fs::read_to_string(ws_root.join("tests/fixtures/styles/apa.csl")).unwrap();
 
     c.bench_function("load_style_apa", |b| {
         b.iter(|| {

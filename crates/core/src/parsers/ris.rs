@@ -1,5 +1,5 @@
+use super::{ParseErrorInfo, ParseOptions, ParseResult};
 use serde_json::{json, Value};
-use super::{ParseOptions, ParseResult, ParseErrorInfo};
 
 /// RIS type tag → CSL-JSON type mapping
 fn ris_type_to_csl(ty: &str) -> &'static str {
@@ -22,8 +22,11 @@ fn ris_type_to_csl(ty: &str) -> &'static str {
 pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
     if input.trim().is_empty() {
         return ParseResult {
-            entries: vec![], errors: vec![],
-            format: "ris".to_string(), truncated: false, scanned_entries: 0,
+            entries: vec![],
+            errors: vec![],
+            format: "ris".to_string(),
+            truncated: false,
+            scanned_entries: 0,
         };
     }
 
@@ -32,11 +35,16 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
         return ParseResult {
             entries: vec![],
             errors: vec![ParseErrorInfo {
-                preview: format!("Input size {} bytes exceeds limit {} bytes",
-                    input.len(), options.max_input_bytes),
+                preview: format!(
+                    "Input size {} bytes exceeds limit {} bytes",
+                    input.len(),
+                    options.max_input_bytes
+                ),
                 error: "input too large".to_string(),
             }],
-            format: "ris".to_string(), truncated: true, scanned_entries: 0,
+            format: "ris".to_string(),
+            truncated: true,
+            scanned_entries: 0,
         };
     }
 
@@ -48,7 +56,9 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
 
     for line in input.lines() {
         let line = line.trim();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
 
         // RIS lines: "XX  - value" (tag is first 2-4 chars, then "  - ", then value)
         // Handle "ER  -" (end record) which may lack trailing space
@@ -57,7 +67,7 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
         } else if line.starts_with("ER  -") {
             ("ER", "")
         } else {
-            continue
+            continue;
         };
 
         match tag {
@@ -81,8 +91,11 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
                     if let Some(max) = options.max_entries {
                         if entries.len() >= max {
                             return ParseResult {
-                                entries, errors: vec![],
-                                format: "ris".to_string(), truncated: true, scanned_entries: scanned,
+                                entries,
+                                errors: vec![],
+                                format: "ris".to_string(),
+                                truncated: true,
+                                scanned_entries: scanned,
                             };
                         }
                     }
@@ -97,13 +110,19 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
                         "AU" | "A1" => {
                             let parts: Vec<&str> = value.splitn(2, ',').collect();
                             if parts.len() == 2 {
-                                authors.push(json!({"family": parts[0].trim(), "given": parts[1].trim()}));
+                                authors.push(
+                                    json!({"family": parts[0].trim(), "given": parts[1].trim()}),
+                                );
                             } else {
                                 authors.push(json!({"literal": value}));
                             }
                         }
-                        "TI" | "T1" => { entry.insert("title".into(), json!(value)); }
-                        "JO" | "JF" | "T2" => { entry.insert("container-title".into(), json!(value)); }
+                        "TI" | "T1" => {
+                            entry.insert("title".into(), json!(value));
+                        }
+                        "JO" | "JF" | "T2" => {
+                            entry.insert("container-title".into(), json!(value));
+                        }
                         "PY" | "Y1" => {
                             // Only set year from PY if DA hasn't already set a full date
                             if !entry.contains_key("issued") {
@@ -120,15 +139,21 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
                                 let month = parts.get(1).and_then(|m| m.parse::<i32>().ok());
                                 let day = parts.get(2).and_then(|d| d.parse::<i32>().ok());
                                 let date_parts = match (month, day) {
-                                    (Some(m), Some(d)) if m > 0 && d > 0 => json!({"date-parts": [[year, m, d]]}),
+                                    (Some(m), Some(d)) if m > 0 && d > 0 => {
+                                        json!({"date-parts": [[year, m, d]]})
+                                    }
                                     (Some(m), _) if m > 0 => json!({"date-parts": [[year, m]]}),
                                     _ => json!({"date-parts": [[year]]}),
                                 };
                                 entry.insert("issued".into(), date_parts);
                             }
                         }
-                        "VL" => { entry.insert("volume".into(), json!(value)); }
-                        "IS" => { entry.insert("issue".into(), json!(value)); }
+                        "VL" => {
+                            entry.insert("volume".into(), json!(value));
+                        }
+                        "IS" => {
+                            entry.insert("issue".into(), json!(value));
+                        }
                         "SP" => {
                             let ep = entry.get("_ep").and_then(|v| v.as_str()).unwrap_or("");
                             if !ep.is_empty() {
@@ -146,10 +171,18 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
                                 entry.insert("_ep".into(), json!(value));
                             }
                         }
-                        "DO" => { entry.insert("DOI".into(), json!(value)); }
-                        "UR" => { entry.insert("URL".into(), json!(value)); }
-                        "PB" => { entry.insert("publisher".into(), json!(value)); }
-                        "CY" => { entry.insert("publisher-place".into(), json!(value)); }
+                        "DO" => {
+                            entry.insert("DOI".into(), json!(value));
+                        }
+                        "UR" => {
+                            entry.insert("URL".into(), json!(value));
+                        }
+                        "PB" => {
+                            entry.insert("publisher".into(), json!(value));
+                        }
+                        "CY" => {
+                            entry.insert("publisher-place".into(), json!(value));
+                        }
                         "SN" => {
                             if value.contains('-') && value.len() == 9 {
                                 entry.insert("ISSN".into(), json!(value));
@@ -157,9 +190,15 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
                                 entry.insert("ISBN".into(), json!(value));
                             }
                         }
-                        "AB" | "N2" => { entry.insert("abstract".into(), json!(value)); }
-                        "LA" => { entry.insert("language".into(), json!(value)); }
-                        "KW" => { keywords.push(value.to_string()); }
+                        "AB" | "N2" => {
+                            entry.insert("abstract".into(), json!(value));
+                        }
+                        "LA" => {
+                            entry.insert("language".into(), json!(value));
+                        }
+                        "KW" => {
+                            keywords.push(value.to_string());
+                        }
                         _ => {}
                     }
                 }
@@ -177,7 +216,7 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
             entry.insert("keyword".into(), json!(keywords.join(", ")));
         }
         scanned += 1;
-        if options.max_entries.map_or(true, |max| entries.len() < max) {
+        if options.max_entries.is_none_or(|max| entries.len() < max) {
             entries.push(Value::Object(entry));
         } else {
             truncated = true;
@@ -193,8 +232,11 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
     }
 
     ParseResult {
-        entries, errors: vec![],
-        format: "ris".to_string(), truncated, scanned_entries: scanned,
+        entries,
+        errors: vec![],
+        format: "ris".to_string(),
+        truncated,
+        scanned_entries: scanned,
     }
 }
 
@@ -226,7 +268,10 @@ mod tests {
         let input = "TY  - COMP\nTI  - My Software\nPY  - 2024\nER  - ";
         let result = parse_ris(input, &ParseOptions::default());
         assert_eq!(result.entries.len(), 1);
-        assert_eq!(result.entries[0]["type"], "software", "COMP should map to software");
+        assert_eq!(
+            result.entries[0]["type"], "software",
+            "COMP should map to software"
+        );
     }
 
     #[test]
@@ -234,7 +279,10 @@ mod tests {
         let input = "TY  - NEWS\nTI  - Breaking Story\nPY  - 2024\nER  - ";
         let result = parse_ris(input, &ParseOptions::default());
         assert_eq!(result.entries.len(), 1);
-        assert_eq!(result.entries[0]["type"], "article-newspaper", "NEWS should map to article-newspaper");
+        assert_eq!(
+            result.entries[0]["type"], "article-newspaper",
+            "NEWS should map to article-newspaper"
+        );
     }
 
     #[test]
@@ -254,7 +302,10 @@ mod tests {
         let issued = &result.entries[0]["issued"]["date-parts"][0];
         assert_eq!(issued[0], 2024);
         assert_eq!(issued[1], 3);
-        assert!(issued.get(2).is_none() || issued[2].is_null(), "no day when only month given");
+        assert!(
+            issued.get(2).is_none() || issued[2].is_null(),
+            "no day when only month given"
+        );
     }
 
     #[test]
@@ -284,10 +335,16 @@ mod tests {
             "issued": {"date-parts": [[2024, 3, 15]]}
         });
         let exported = crate::export::ris::csl_json_to_ris(&item);
-        assert!(exported.contains("TY  - COMP"), "software should export as COMP");
+        assert!(
+            exported.contains("TY  - COMP"),
+            "software should export as COMP"
+        );
 
         let reimported = parse_ris(&exported, &ParseOptions::default());
-        assert_eq!(reimported.entries[0]["type"], "software", "COMP should roundtrip to software");
+        assert_eq!(
+            reimported.entries[0]["type"], "software",
+            "COMP should roundtrip to software"
+        );
         let issued = &reimported.entries[0]["issued"]["date-parts"][0];
         assert_eq!(issued[0], 2024);
         assert_eq!(issued[1], 3);

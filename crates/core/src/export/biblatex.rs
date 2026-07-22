@@ -1,6 +1,7 @@
+use super::bibtex::{
+    csl_keyword_as_string, disambiguate_keys, escape_bibtex, format_authors, resolve_key,
+};
 use serde_json::Value;
-use super::bibtex::{csl_keyword_as_string, disambiguate_keys, escape_bibtex,
-                    format_authors, resolve_key};
 
 /// CSL-JSON type → BibLaTeX entry type mapping.
 ///
@@ -31,15 +32,20 @@ fn csl_type_to_biblatex(csl_type: &str) -> &'static str {
 /// BibLaTeX ≥ v3.5 canonicalized on `date` (ISO 8601); `year`/`month`/`day`
 /// are now deprecated aliases. Biber requires ISO form.
 fn format_biblatex_date(item: &Value) -> Option<String> {
-    let parts = item["issued"]["date-parts"].as_array()?
+    let parts = item["issued"]["date-parts"]
+        .as_array()?
         .first()?
         .as_array()?;
     let year = parts.first()?.as_i64()?;
     // Drop out-of-range month/day rather than emitting malformed EDTF like
     // `2024-999`. Biber rejects those; fall back to lower precision.
-    let month = parts.get(1).and_then(|m| m.as_i64())
+    let month = parts
+        .get(1)
+        .and_then(|m| m.as_i64())
         .filter(|m| (1..=12).contains(m));
-    let day = parts.get(2).and_then(|d| d.as_i64())
+    let day = parts
+        .get(2)
+        .and_then(|d| d.as_i64())
         .filter(|d| (1..=31).contains(d));
     Some(match (month, day) {
         (Some(m), Some(d)) => format!("{year:04}-{m:02}-{d:02}"),
@@ -95,9 +101,15 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
     }
 
     // Volume / issue / pages
-    if let Some(v) = item["volume"].as_str() { fields.push(format!("  volume = {{{v}}}")); }
-    if let Some(v) = item["issue"].as_str() { fields.push(format!("  number = {{{v}}}")); }
-    if let Some(v) = item["page"].as_str() { fields.push(format!("  pages = {{{v}}}")); }
+    if let Some(v) = item["volume"].as_str() {
+        fields.push(format!("  volume = {{{v}}}"));
+    }
+    if let Some(v) = item["issue"].as_str() {
+        fields.push(format!("  number = {{{v}}}"));
+    }
+    if let Some(v) = item["page"].as_str() {
+        fields.push(format!("  pages = {{{v}}}"));
+    }
 
     // Publisher / location (canonical; `address` is a legacy alias in BibLaTeX)
     if let Some(v) = item["publisher"].as_str() {
@@ -108,10 +120,18 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
     }
 
     // Identifiers
-    if let Some(v) = item["DOI"].as_str() { fields.push(format!("  doi = {{{v}}}")); }
-    if let Some(v) = item["URL"].as_str() { fields.push(format!("  url = {{{v}}}")); }
-    if let Some(v) = item["ISBN"].as_str() { fields.push(format!("  isbn = {{{v}}}")); }
-    if let Some(v) = item["ISSN"].as_str() { fields.push(format!("  issn = {{{v}}}")); }
+    if let Some(v) = item["DOI"].as_str() {
+        fields.push(format!("  doi = {{{v}}}"));
+    }
+    if let Some(v) = item["URL"].as_str() {
+        fields.push(format!("  url = {{{v}}}"));
+    }
+    if let Some(v) = item["ISBN"].as_str() {
+        fields.push(format!("  isbn = {{{v}}}"));
+    }
+    if let Some(v) = item["ISSN"].as_str() {
+        fields.push(format!("  issn = {{{v}}}"));
+    }
 
     // Abstract / keywords / note
     if let Some(v) = item["abstract"].as_str() {
@@ -139,8 +159,12 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
     // PMID / PMCID — emit both as direct fields (top-level in CSL 1.0.1+) AND
     // as eprint/eprinttype when no `custom.eprint` is present, since the most
     // common BibLaTeX styles consult `eprint` for PubMed/arXiv linking.
-    if let Some(v) = item["PMID"].as_str() { fields.push(format!("  pmid = {{{v}}}")); }
-    if let Some(v) = item["PMCID"].as_str() { fields.push(format!("  pmcid = {{{v}}}")); }
+    if let Some(v) = item["PMID"].as_str() {
+        fields.push(format!("  pmid = {{{v}}}"));
+    }
+    if let Some(v) = item["PMCID"].as_str() {
+        fields.push(format!("  pmcid = {{{v}}}"));
+    }
 
     // Eprint (from CSL custom.eprint). `eprintclass` is the BibLaTeX canonical
     // (INSPIRE-HEP's `archivePrefix`/`primaryClass` is a separate convention).
@@ -176,7 +200,9 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
 /// both formats yields identical keys.
 pub fn csl_json_array_to_biblatex(items: &[Value]) -> String {
     let keys = disambiguate_keys(items);
-    let mut out = items.iter().zip(keys.iter())
+    let mut out = items
+        .iter()
+        .zip(keys.iter())
         .map(|(item, key)| csl_json_to_biblatex_with_key(item, key))
         .collect::<Vec<_>>()
         .join("\n\n");
@@ -205,12 +231,26 @@ mod tests {
         });
         let bib = csl_json_to_biblatex(&item);
         assert!(bib.starts_with("@article{smith2024,"), "{bib}");
-        assert!(bib.contains("journaltitle = {Journal of Testing}"),
-            "article must use journaltitle, not journal: {bib}");
-        assert!(!bib.contains("\n  journal = "), "must NOT emit legacy `journal`: {bib}");
-        assert!(bib.contains("date = {2024-03-15}"), "ISO 8601 full date: {bib}");
-        assert!(!bib.contains("\n  year = "), "must NOT emit separate `year`: {bib}");
-        assert!(!bib.contains("\n  month = "), "must NOT emit separate `month`: {bib}");
+        assert!(
+            bib.contains("journaltitle = {Journal of Testing}"),
+            "article must use journaltitle, not journal: {bib}"
+        );
+        assert!(
+            !bib.contains("\n  journal = "),
+            "must NOT emit legacy `journal`: {bib}"
+        );
+        assert!(
+            bib.contains("date = {2024-03-15}"),
+            "ISO 8601 full date: {bib}"
+        );
+        assert!(
+            !bib.contains("\n  year = "),
+            "must NOT emit separate `year`: {bib}"
+        );
+        assert!(
+            !bib.contains("\n  month = "),
+            "must NOT emit separate `month`: {bib}"
+        );
     }
 
     #[test]
@@ -251,8 +291,10 @@ mod tests {
             "publisher-place": "New York"
         });
         let bib = csl_json_to_biblatex(&item);
-        assert!(bib.contains("location = {New York}"),
-            "must use `location`, not legacy `address`: {bib}");
+        assert!(
+            bib.contains("location = {New York}"),
+            "must use `location`, not legacy `address`: {bib}"
+        );
         assert!(!bib.contains("\n  address = "), "no legacy address: {bib}");
     }
 
@@ -281,8 +323,10 @@ mod tests {
         let bib = csl_json_to_biblatex(&item);
         assert!(bib.contains("eprint = {2301.12345}"), "{bib}");
         assert!(bib.contains("eprinttype = {arxiv}"), "{bib}");
-        assert!(bib.contains("eprintclass = {cs.CL}"),
-            "canonical field is `eprintclass` (not primaryClass): {bib}");
+        assert!(
+            bib.contains("eprintclass = {cs.CL}"),
+            "canonical field is `eprintclass` (not primaryClass): {bib}"
+        );
     }
 
     #[test]
@@ -300,7 +344,10 @@ mod tests {
         let bib = csl_json_to_biblatex(&item);
         assert!(bib.contains("pmid = {38123456}"), "pmid field: {bib}");
         assert!(bib.contains("eprint = {38123456}"), "eprint id: {bib}");
-        assert!(bib.contains("eprinttype = {pubmed}"), "eprint type pubmed: {bib}");
+        assert!(
+            bib.contains("eprinttype = {pubmed}"),
+            "eprint type pubmed: {bib}"
+        );
     }
 
     #[test]
@@ -319,10 +366,18 @@ mod tests {
         });
         let bib = csl_json_to_biblatex(&item);
         assert!(bib.contains("pmid = {12345}"), "pmid direct field: {bib}");
-        assert!(bib.contains("eprint = {2301.0001}"), "arxiv eprint wins: {bib}");
-        assert!(bib.contains("eprinttype = {arxiv}"), "type stays arxiv: {bib}");
-        assert!(!bib.contains("eprinttype = {pubmed}"),
-            "must NOT emit pubmed eprinttype when arxiv already present: {bib}");
+        assert!(
+            bib.contains("eprint = {2301.0001}"),
+            "arxiv eprint wins: {bib}"
+        );
+        assert!(
+            bib.contains("eprinttype = {arxiv}"),
+            "type stays arxiv: {bib}"
+        );
+        assert!(
+            !bib.contains("eprinttype = {pubmed}"),
+            "must NOT emit pubmed eprinttype when arxiv already present: {bib}"
+        );
     }
 
     #[test]
@@ -336,8 +391,10 @@ mod tests {
         });
         let bib = csl_json_to_biblatex(&item);
         assert!(bib.starts_with("@report{"), "biblatex uses @report: {bib}");
-        assert!(bib.contains("author = {{World Health Organization}}"),
-            "literal author braced: {bib}");
+        assert!(
+            bib.contains("author = {{World Health Organization}}"),
+            "literal author braced: {bib}"
+        );
     }
 
     #[test]
@@ -351,7 +408,10 @@ mod tests {
             "keyword": ["ml", "nlp"]
         });
         let bib = csl_json_to_biblatex(&item);
-        assert!(bib.contains("keywords = {ml, nlp}"), "array form must export: {bib}");
+        assert!(
+            bib.contains("keywords = {ml, nlp}"),
+            "array form must export: {bib}"
+        );
     }
 
     #[test]
@@ -370,11 +430,21 @@ mod tests {
     #[test]
     fn test_roundtrip_bibtex_to_biblatex_preserves_metadata() {
         let input = "@article{smith2024, author = {Smith, John}, title = {T}, journal = {N}, year = {2024}, abstract = {hi}, keywords = {ml}, pmid = {12345}}";
-        let parsed = crate::parsers::bibtex::parse_bibtex(input, &crate::parsers::ParseOptions::default());
+        let parsed =
+            crate::parsers::bibtex::parse_bibtex(input, &crate::parsers::ParseOptions::default());
         assert_eq!(parsed.entries.len(), 1);
         let exported = csl_json_to_biblatex(&parsed.entries[0]);
-        assert!(exported.contains("abstract = {hi}"), "abstract roundtrips: {exported}");
-        assert!(exported.contains("keywords = {ml}"), "keywords roundtrip: {exported}");
-        assert!(exported.contains("pmid = {12345}"), "pmid roundtrips: {exported}");
+        assert!(
+            exported.contains("abstract = {hi}"),
+            "abstract roundtrips: {exported}"
+        );
+        assert!(
+            exported.contains("keywords = {ml}"),
+            "keywords roundtrip: {exported}"
+        );
+        assert!(
+            exported.contains("pmid = {12345}"),
+            "pmid roundtrips: {exported}"
+        );
     }
 }

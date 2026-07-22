@@ -1,5 +1,5 @@
+use super::{ParseErrorInfo, ParseOptions, ParseResult};
 use serde_json::{json, Value};
-use super::{ParseOptions, ParseResult, ParseErrorInfo};
 
 /// Parse MEDLINE/NBIB content into CSL-JSON items.
 ///
@@ -40,8 +40,11 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
         return ParseResult {
             entries: vec![],
             errors: vec![ParseErrorInfo {
-                preview: format!("Input size {} bytes exceeds limit {} bytes",
-                    input.len(), options.max_input_bytes),
+                preview: format!(
+                    "Input size {} bytes exceeds limit {} bytes",
+                    input.len(),
+                    options.max_input_bytes
+                ),
                 error: "input too large".to_string(),
             }],
             format: "medline".to_string(),
@@ -113,7 +116,7 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
     let mut truncated = false;
     if let Some(record) = current.take() {
         scanned += 1;
-        if options.max_entries.map_or(true, |max| entries.len() < max) {
+        if options.max_entries.is_none_or(|max| entries.len() < max) {
             entries.push(record.to_csl_json());
         } else {
             truncated = true;
@@ -135,7 +138,10 @@ fn parse_tag_line(line: &str) -> Option<(String, String)> {
     if !(2..=4).contains(&tag.len()) {
         return None;
     }
-    if !tag.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit()) {
+    if !tag
+        .chars()
+        .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit())
+    {
         return None;
     }
     Some((tag.to_string(), raw_value.trim_start().to_string()))
@@ -145,8 +151,8 @@ fn parse_tag_line(line: &str) -> Option<(String, String)> {
 struct MedlineRecord {
     pmid: Option<String>,
     title: Option<String>,
-    authors: Vec<String>,       // FAU names: "Last, First Middle"
-    date: Option<String>,       // DP: "2024 Mar" or "2024"
+    authors: Vec<String>,         // FAU names: "Last, First Middle"
+    date: Option<String>,         // DP: "2024 Mar" or "2024"
     journal_abbr: Option<String>, // TA
     journal_full: Option<String>, // JT
     volume: Option<String>,
@@ -251,15 +257,19 @@ impl MedlineRecord {
 
         // Authors (from FAU — full author names)
         if !self.authors.is_empty() {
-            let names: Vec<Value> = self.authors.iter().map(|fau| {
-                // FAU format: "Last, First Middle"
-                let parts: Vec<&str> = fau.splitn(2, ',').collect();
-                if parts.len() == 2 {
-                    json!({"family": parts[0].trim(), "given": parts[1].trim()})
-                } else {
-                    json!({"literal": fau})
-                }
-            }).collect();
+            let names: Vec<Value> = self
+                .authors
+                .iter()
+                .map(|fau| {
+                    // FAU format: "Last, First Middle"
+                    let parts: Vec<&str> = fau.splitn(2, ',').collect();
+                    if parts.len() == 2 {
+                        json!({"family": parts[0].trim(), "given": parts[1].trim()})
+                    } else {
+                        json!({"literal": fau})
+                    }
+                })
+                .collect();
             obj.insert("author".into(), json!(names));
         }
 
@@ -289,14 +299,30 @@ impl MedlineRecord {
         }
 
         // Biblio fields
-        if let Some(ref v) = self.volume { obj.insert("volume".into(), json!(v)); }
-        if let Some(ref v) = self.issue { obj.insert("issue".into(), json!(v)); }
-        if let Some(ref v) = self.pages { obj.insert("page".into(), json!(v)); }
-        if let Some(ref v) = self.doi { obj.insert("DOI".into(), json!(v)); }
-        if let Some(ref v) = self.abstract_text { obj.insert("abstract".into(), json!(v)); }
-        if let Some(ref v) = self.language { obj.insert("language".into(), json!(v)); }
-        if let Some(ref v) = self.issn { obj.insert("ISSN".into(), json!(v)); }
-        if let Some(ref v) = self.place { obj.insert("publisher-place".into(), json!(v)); }
+        if let Some(ref v) = self.volume {
+            obj.insert("volume".into(), json!(v));
+        }
+        if let Some(ref v) = self.issue {
+            obj.insert("issue".into(), json!(v));
+        }
+        if let Some(ref v) = self.pages {
+            obj.insert("page".into(), json!(v));
+        }
+        if let Some(ref v) = self.doi {
+            obj.insert("DOI".into(), json!(v));
+        }
+        if let Some(ref v) = self.abstract_text {
+            obj.insert("abstract".into(), json!(v));
+        }
+        if let Some(ref v) = self.language {
+            obj.insert("language".into(), json!(v));
+        }
+        if let Some(ref v) = self.issn {
+            obj.insert("ISSN".into(), json!(v));
+        }
+        if let Some(ref v) = self.place {
+            obj.insert("publisher-place".into(), json!(v));
+        }
 
         // Keywords
         if !self.keywords.is_empty() {
@@ -309,10 +335,18 @@ impl MedlineRecord {
     fn derive_type(&self) -> &'static str {
         for pt in &self.pub_types {
             let lower = pt.to_lowercase();
-            if lower.contains("review") { return "article-journal"; }
-            if lower.contains("book") { return "book"; }
-            if lower.contains("congress") || lower.contains("conference") { return "paper-conference"; }
-            if lower.contains("dataset") { return "dataset"; }
+            if lower.contains("review") {
+                return "article-journal";
+            }
+            if lower.contains("book") {
+                return "book";
+            }
+            if lower.contains("congress") || lower.contains("conference") {
+                return "paper-conference";
+            }
+            if lower.contains("dataset") {
+                return "dataset";
+            }
         }
         "article-journal" // Default for MEDLINE
     }
@@ -321,10 +355,18 @@ impl MedlineRecord {
 /// Convert 3-letter month abbreviation to number.
 fn month_to_number(month: &str) -> Option<i32> {
     match month.to_lowercase().as_str() {
-        "jan" => Some(1), "feb" => Some(2), "mar" => Some(3),
-        "apr" => Some(4), "may" => Some(5), "jun" => Some(6),
-        "jul" => Some(7), "aug" => Some(8), "sep" => Some(9),
-        "oct" => Some(10), "nov" => Some(11), "dec" => Some(12),
+        "jan" => Some(1),
+        "feb" => Some(2),
+        "mar" => Some(3),
+        "apr" => Some(4),
+        "may" => Some(5),
+        "jun" => Some(6),
+        "jul" => Some(7),
+        "aug" => Some(8),
+        "sep" => Some(9),
+        "oct" => Some(10),
+        "nov" => Some(11),
+        "dec" => Some(12),
         _ => None,
     }
 }
@@ -338,12 +380,20 @@ mod tests {
         let input = include_str!("../../../../tests/fixtures/samples/sample.nbib");
         let result = parse_medline(input, &ParseOptions::default());
 
-        assert_eq!(result.entries.len(), 2, "should parse 2 entries: {:?}", result.errors);
+        assert_eq!(
+            result.entries.len(),
+            2,
+            "should parse 2 entries: {:?}",
+            result.errors
+        );
         assert!(result.errors.is_empty());
         assert_eq!(result.format, "medline");
 
         let first = &result.entries[0];
-        assert_eq!(first["title"], "A Study of Something Important in Modern Medicine");
+        assert_eq!(
+            first["title"],
+            "A Study of Something Important in Modern Medicine"
+        );
         assert_eq!(first["DOI"], "10.1234/test.2024");
         assert_eq!(first["PMID"], "12345678");
         assert_eq!(first["volume"], "42");
@@ -381,7 +431,12 @@ LID - 10.1038/s41598-026-40798-8 [doi]
 "#;
         let result = parse_medline(input, &ParseOptions::default());
 
-        assert_eq!(result.entries.len(), 1, "should parse normalized tags: {:?}", result.errors);
+        assert_eq!(
+            result.entries.len(),
+            1,
+            "should parse normalized tags: {:?}",
+            result.errors
+        );
         let first = &result.entries[0];
         assert_eq!(first["title"], "A normalized MEDLINE title.");
         assert_eq!(first["container-title"], "Scientific reports");
@@ -397,7 +452,10 @@ LID - 10.1038/s41598-026-40798-8 [doi]
     #[test]
     fn test_parse_medline_max_entries() {
         let input = include_str!("../../../../tests/fixtures/samples/sample.nbib");
-        let opts = ParseOptions { max_entries: Some(1), ..Default::default() };
+        let opts = ParseOptions {
+            max_entries: Some(1),
+            ..Default::default()
+        };
         let result = parse_medline(input, &opts);
         assert_eq!(result.entries.len(), 1);
         assert!(result.truncated);

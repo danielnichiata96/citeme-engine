@@ -1,15 +1,16 @@
 /// Protected acronyms that should NOT be case-modified.
 const PROTECTED_ACRONYMS: &[&str] = &[
-    "IBGE", "IPEA", "MEC", "CAPES", "CNPq", "USP", "UFRJ", "UFMG",
-    "UNESP", "UFSC", "INPE", "FIOCRUZ", "EMBRAPA", "UNICAMP",
-    "UNESCO", "WHO", "OMS", "UNICEF", "ONU", "NASA", "NIST", "NIH",
-    "IEEE", "ACM", "OECD",
+    "IBGE", "IPEA", "MEC", "CAPES", "CNPq", "USP", "UFRJ", "UFMG", "UNESP", "UFSC", "INPE",
+    "FIOCRUZ", "EMBRAPA", "UNICAMP", "UNESCO", "WHO", "OMS", "UNICEF", "ONU", "NASA", "NIST",
+    "NIH", "IEEE", "ACM", "OECD",
 ];
 
 /// Check if text is a protected acronym.
 pub fn is_protected_acronym(text: &str) -> bool {
     let clean = text.replace(['.', ','], "").trim().to_string();
-    PROTECTED_ACRONYMS.iter().any(|&a| a.eq_ignore_ascii_case(&clean))
+    PROTECTED_ACRONYMS
+        .iter()
+        .any(|&a| a.eq_ignore_ascii_case(&clean))
 }
 
 /// Post-process citation text for ABNT 2023 compliance.
@@ -51,7 +52,12 @@ fn post_process_reference(text: &str) -> String {
             return text.to_string();
         }
 
-        if plain_before.is_empty() || plain_before.chars().next().map_or(true, |c| c.is_ascii_digit()) {
+        if plain_before.is_empty()
+            || plain_before
+                .chars()
+                .next()
+                .is_none_or(|c| c.is_ascii_digit())
+        {
             return text.to_string();
         }
 
@@ -98,8 +104,14 @@ fn uppercase_text_only(s: &str) -> String {
     let mut in_tag = false;
     for c in s.chars() {
         match c {
-            '<' => { in_tag = true; result.push(c); }
-            '>' => { in_tag = false; result.push(c); }
+            '<' => {
+                in_tag = true;
+                result.push(c);
+            }
+            '>' => {
+                in_tag = false;
+                result.push(c);
+            }
             _ if in_tag => result.push(c),
             _ => {
                 for uc in c.to_uppercase() {
@@ -136,7 +148,10 @@ fn post_process_in_text(text: &str) -> String {
                 // No comma — could be a single name, "et al.", or a year
                 let trimmed = part.trim();
                 let is_name = !trimmed.is_empty()
-                    && trimmed.chars().next().map_or(false, |c| c.is_alphabetic() && c.is_uppercase())
+                    && trimmed
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_alphabetic() && c.is_uppercase())
                     && !trimmed.contains('.')
                     && !trimmed.chars().any(|c| c.is_ascii_digit());
                 if is_name && !is_protected_acronym(trimmed) {
@@ -163,23 +178,35 @@ mod tests {
     fn test_abnt_reference_uppercase_family() {
         let input = "Silva, J. (2024). Title.";
         let result = post_process_abnt(input, false);
-        assert!(result.starts_with("SILVA"), "family name should be uppercased: {result}");
+        assert!(
+            result.starts_with("SILVA"),
+            "family name should be uppercased: {result}"
+        );
     }
 
     #[test]
     fn test_abnt_reference_preserves_html() {
-        let input = r#"Silva, João. <span style="font-weight: bold;">Title</span>. Publisher, 2024."#;
+        let input =
+            r#"Silva, João. <span style="font-weight: bold;">Title</span>. Publisher, 2024."#;
         let result = post_process_abnt(input, false);
-        assert!(result.starts_with("SILVA"), "family name should be uppercased: {result}");
-        assert!(result.contains(r#"<span style="font-weight: bold;">"#),
-            "HTML tags must NOT be uppercased: {result}");
+        assert!(
+            result.starts_with("SILVA"),
+            "family name should be uppercased: {result}"
+        );
+        assert!(
+            result.contains(r#"<span style="font-weight: bold;">"#),
+            "HTML tags must NOT be uppercased: {result}"
+        );
     }
 
     #[test]
     fn test_abnt_protects_acronyms() {
         let input = "IBGE (2024). Census data.";
         let result = post_process_abnt(input, false);
-        assert!(result.starts_with("IBGE"), "IBGE should stay IBGE: {result}");
+        assert!(
+            result.starts_with("IBGE"),
+            "IBGE should stay IBGE: {result}"
+        );
     }
 
     #[test]
@@ -187,22 +214,37 @@ mod tests {
         // Institutional author with no comma — should not uppercase the rest
         let input = r#"IBGE. <span style="font-weight: bold;">Censo</span>. Rio de Janeiro, 2024."#;
         let result = post_process_abnt(input, false);
-        assert!(result.contains("Censo"), "content after institutional name should not be uppercased: {result}");
+        assert!(
+            result.contains("Censo"),
+            "content after institutional name should not be uppercased: {result}"
+        );
     }
 
     #[test]
     fn test_abnt_in_text() {
         let input = "(Silva, 2024)";
         let result = post_process_abnt(input, true);
-        assert!(result.contains("SILVA"), "in-text family name should be uppercased: {result}");
+        assert!(
+            result.contains("SILVA"),
+            "in-text family name should be uppercased: {result}"
+        );
     }
 
     #[test]
     fn test_abnt_in_text_multi_author() {
         let input = "(Souza; Santos, 2023)";
         let result = post_process_abnt(input, true);
-        assert!(result.contains("SOUZA"), "first author should be uppercased: {result}");
-        assert!(result.contains("SANTOS"), "second author should be uppercased: {result}");
-        assert!(result.contains("; "), "semicolons should have proper spacing: {result}");
+        assert!(
+            result.contains("SOUZA"),
+            "first author should be uppercased: {result}"
+        );
+        assert!(
+            result.contains("SANTOS"),
+            "second author should be uppercased: {result}"
+        );
+        assert!(
+            result.contains("; "),
+            "semicolons should have proper spacing: {result}"
+        );
     }
 }
