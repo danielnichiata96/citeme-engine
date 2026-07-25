@@ -1,31 +1,137 @@
 # citeme-engine
 
-Rust/Wasm citation formatting engine for CiteMe.
+Bibliography interchange and CSL formatting for Rust and the browser.
 
-## Quick Start
+**Reads** BibTeX, RIS, MEDLINE/NBIB and CSL-JSON — with format auto-detection.
+**Writes** BibTeX, BibLaTeX, RIS and Hayagriva YAML.
+**Renders** citations and bibliographies in any CSL style, in 7 locales.
+
+Ships as a ~540 KB (gzip) Wasm module with no runtime dependencies, so all of
+it runs client-side. Built for and used in production by
+[CiteMe](https://citeme.app).
+
+CSL rendering is [Hayagriva](https://github.com/typst/hayagriva)'s — this
+crate doesn't reimplement it.
+
+## What this adds on top of Hayagriva
+
+Hayagriva is an excellent CSL renderer with a deliberately small I/O surface:
+it reads BibLaTeX and its own YAML, and writes that YAML. Everything below is
+what you need around it to actually exchange bibliographies with the rest of
+the world.
+
+| | Hayagriva 0.9 | here |
+|---|---|---|
+| Read BibTeX/BibLaTeX | ✅ | ✅ error-tolerant, → CSL-JSON |
+| Read RIS | — | ✅ |
+| Read MEDLINE/NBIB (PubMed) | — | ✅ |
+| Read CSL-JSON | ✅ | ✅ validated, single-or-array |
+| Detect format from raw text | — | ✅ |
+| **Write BibTeX** | — | ✅ |
+| **Write BibLaTeX** | — | ✅ |
+| **Write RIS** | — | ✅ |
+| Write Hayagriva YAML | from `Library` | ✅ from raw CSL-JSON |
+| Render CSL | ✅ | ✅ (Hayagriva) |
+| Runs in the browser | — | ✅ |
+
+Two more things worth knowing about:
+
+- **CSL XML normalization** (`crates/core/src/normalize.rs`) works around a
+  Hayagriva ≤0.9 date-rendering bug: the `delimiter` of a `<date>` element is
+  emitted between every `<date-part>` even when a neighbor is empty, so a
+  year-only date renders as `"2018 "` and a parent suffix turns it into
+  `"2018 ;"`. Every style and locale is rewritten to use per-part `prefix`
+  instead. The transform is idempotent.
+- **ABNT post-processing** (`crates/core/src/abnt.rs`) applies the family-name
+  uppercasing that Brazil's ABNT 2023 requires and CSL can't express, while
+  protecting institutional acronyms (IBGE, CAPES, USP, …) from being mangled.
+
+### Error tolerance
+
+Parsing returns partial results instead of failing the batch — importing
+user-pasted content, 47 good entries out of 50 beats an error:
+
+```jsonc
+{
+  "entries": [ /* CSL-JSON */ ],
+  "errors":  [ { "preview": "@article{broken,", "error": "…" } ],
+  "format": "bibtex",
+  "truncated": false,
+  "scannedEntries": 50
+}
+```
+
+## Install
 
 ```bash
-# Build
-./build.sh
-
-# Test
-cargo test --workspace
-
-# Use from JS
-import { createEngine } from 'citeme-engine-wasm';
-const engine = await createEngine();
-engine.loadStyle('apa', apaXml);
-engine.loadLocale('en-US', localeXml);
-const result = JSON.parse(engine.formatOne(cslJsonStr, 'apa', 'en-US', false));
+npm install citeme-engine-wasm
 ```
+
+Styles and locales are not bundled — you supply the XML, so you control which
+of the [10k+ CSL styles](https://github.com/citation-style-language/styles)
+you ship and where they're cached.
+
+```js
+import { createEngine, resultShapeVersion } from 'citeme-engine-wasm';
+
+const engine = await createEngine();
+engine.loadStyle('apa', apaXml);       // CSL style XML
+engine.loadLocale('en-US', localeXml); // CSL locale XML
+
+const { reference, inText } = JSON.parse(
+  engine.formatOne(cslJsonStr, 'apa', 'en-US', false)
+);
+
+// Import anything, get CSL-JSON back
+const parsed = JSON.parse(engine.parseAuto(pastedText));
+
+// Export it again
+const bib = engine.exportBibtex(JSON.stringify(parsed.entries));
+```
+
+Assert `resultShapeVersion() === 1` once after init and every returned JSON
+shape is pinned; see *Error semantics* below.
+
+Also available as a plain Rust crate (`crates/core`) with no Wasm involved.
+
+## Conformance
+
+**Not a full CSL processor, and not trying to be.** What's guaranteed is that
+the 60 styles in `tests/fixtures/styles/corpus/` — the set CiteMe serves in
+production, spanning APA, ABNT, Chicago, Harvard, IEEE, MLA, Vancouver and
+others — load and format without panicking across all supported locales,
+enforced in CI on every commit. Arbitrary CSL beyond that corpus generally
+works, because Hayagriva does the rendering, but it isn't tested here and this
+project does not run the official
+[CSL test suite](https://github.com/citation-style-language/test-suite).
+
+If you need audited spec conformance, [citeproc-js](https://github.com/Juris-M/citeproc-js)
+is the reference implementation. If you need bibliography I/O that runs in a
+browser tab in under a millisecond, that's this.
+
+Locales tested: `en-US`, `en-GB`, `pt-BR`, `pt-PT`, `es-ES`, `fr-FR`, `de-DE`.
 
 ## Architecture
 
-- `crates/core/` — Pure Rust logic (CitationEngine, parsers, ABNT)
-- `crates/wasm/` — Thin wasm-bindgen wrapper
+- `crates/core/` — pure Rust: engine, parsers, exporters, normalization, ABNT
+- `crates/wasm/` — thin `wasm-bindgen` wrapper
 - `js/` — npm package (`citeme-engine-wasm`)
 
-Powered by [Hayagriva](https://github.com/typst/hayagriva) v0.9.1 with the `csl-json` feature for direct CSL-JSON formatting.
+## Performance
+
+Measured in CiteMe's pipeline against [citation-js](https://citation.js.org),
+the JS toolchain it replaced:
+
+| Operation | citation-js | here |
+|---|---|---|
+| `formatOne`, APA | 1.4 ms | 0.5 ms |
+| `formatOne`, ABNT | 0.8 ms | 0.08 ms |
+| `formatBatch`, 50 items | 51 ms | 40 ms |
+| End-to-end, 5 items, cold | 444 ms | 52 ms |
+
+Numbers are from one machine and one workload — treat them as an order of
+magnitude, not a benchmark result. `cargo bench` (Criterion) measures the Rust
+side directly if you want to reproduce the formatting figures locally.
 
 ## Error semantics across the Wasm boundary
 
@@ -85,3 +191,18 @@ On **BibTeX export** the conventions differ:
 On **RIS export** both engines emit plain values (no brace handling exists in
 either); remaining differences are tag-level (`JO` vs `T2` for journal,
 citation-js adds an `ID` tag).
+
+## Contributing
+
+Bug reports welcome — reachable panics and round-trip failures especially.
+Feature requests may be declined; this is a single-maintainer project built
+around one product's needs. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+[SECURITY.md](SECURITY.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+The CSL styles and locales vendored as test fixtures are **not** MIT: they
+belong to the [Citation Style Language](https://citationstyles.org) project
+and are CC BY-SA 3.0. See [NOTICE.md](NOTICE.md).

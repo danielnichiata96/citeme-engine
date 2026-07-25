@@ -3,3 +3,5 @@ js/pkg/
 *.tgz
 .DS_Store
 .vscode/
+.claude/
+.qodo/

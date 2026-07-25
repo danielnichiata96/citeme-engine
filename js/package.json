@@ -6,7 +6,11 @@
     "url": "https://github.com/danielnichiata96/citeme-engine"
   },
   "version": "0.3.7",
-  "description": "High-performance citation formatting engine powered by Rust/Wasm",
+  "description": "Bibliography interchange and CSL formatting for the browser — reads BibTeX, RIS, MEDLINE and CSL-JSON, writes BibTeX, BibLaTeX and RIS. Rust/Wasm, powered by Hayagriva.",
+  "homepage": "https://github.com/danielnichiata96/citeme-engine#readme",
+  "bugs": {
+    "url": "https://github.com/danielnichiata96/citeme-engine/issues"
+  },
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
@@ -33,8 +37,20 @@
   "keywords": [
     "citation",
     "csl",
+    "csl-json",
+    "citeproc",
     "bibtex",
+    "biblatex",
+    "ris",
+    "medline",
+    "nbib",
+    "pubmed",
+    "bibliography",
+    "reference-manager",
+    "abnt",
+    "hayagriva",
     "wasm",
+    "rust",
     "academic"
   ],
   "license": "MIT"
