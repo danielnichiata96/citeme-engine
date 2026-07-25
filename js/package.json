@@ -3,9 +3,9 @@
   "author": "danielnichiata",
   "repository": {
     "type": "git",
-    "url": "https://github.com/danielnichiata96/citeme-engine"
+    "url": "git+https://github.com/danielnichiata96/citeme-engine.git"
   },
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Bibliography interchange and CSL formatting for the browser — reads BibTeX, RIS, MEDLINE and CSL-JSON, writes BibTeX, BibLaTeX and RIS. Rust/Wasm, powered by Hayagriva.",
   "homepage": "https://github.com/danielnichiata96/citeme-engine#readme",
   "bugs": {
