@@ -92,6 +92,14 @@ const bib = engine.exportBibtex(JSON.stringify(parsed.entries));
 Assert `resultShapeVersion() === 1` once after init and every returned JSON
 shape is pinned; see *Error semantics* below.
 
+> **Formatted output is HTML, and it is not sanitized.** Like every CSL
+> processor, the engine emits markup — `<i>`, `<sub>`, `<span>` — because CSL
+> styles and CSL-JSON legitimately carry it (`The <i>Drosophila</i> genome`).
+> It does not distinguish that from markup an attacker put in a title, so a
+> hostile `title` reaches your DOM verbatim. **Sanitize before rendering as
+> HTML**, or pass `formatOneWithOutput(…, "plain")` and get text back. Same
+> contract as citeproc-js and citation-js.
+
 Also available as a plain Rust crate (`crates/core`) with no Wasm involved.
 
 ## Conformance

@@ -15,7 +15,13 @@ wasm-bindgen \
   --target web \
   --typescript
 
-echo "=== Step 3: Optimize Wasm (optional) ==="
+echo "=== Step 3: Stage README for the npm package ==="
+# npm only publishes files under the package root (js/), so the repo README
+# has to be copied in — without it the package page on npmjs.com renders no
+# documentation at all. Copied at build time, gitignored, listed in `files`.
+cp README.md js/README.md
+
+echo "=== Step 4: Optimize Wasm (optional) ==="
 if command -v wasm-opt &> /dev/null; then
   wasm-opt js/pkg/citeme_engine_wasm_bg.wasm \
     -Oz \

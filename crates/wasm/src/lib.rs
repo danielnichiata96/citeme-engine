@@ -256,34 +256,14 @@ impl WasmCitationEngine {
     /// Auto-detect format and parse. Returns JSON string of ParseResult.
     #[wasm_bindgen(js_name = "parseAuto")]
     pub fn parse_auto(&self, input: &str, max_entries: Option<usize>) -> Result<String, JsError> {
-        use citeme_engine_core::parsers::detect::InputFormat;
-        let format = citeme_engine_core::parsers::detect::detect_format(input);
         let options = citeme_engine_core::parsers::ParseOptions {
             max_entries,
             ..Default::default()
         };
-        let result = match format {
-            InputFormat::Bibtex => {
-                citeme_engine_core::parsers::bibtex::parse_bibtex(input, &options)
-            }
-            InputFormat::Ris => citeme_engine_core::parsers::ris::parse_ris(input, &options),
-            InputFormat::CslJson => {
-                citeme_engine_core::parsers::csl_json::parse_csl_json(input, &options)
-            }
-            InputFormat::Medline => {
-                citeme_engine_core::parsers::medline::parse_medline(input, &options)
-            }
-            InputFormat::Unknown => citeme_engine_core::parsers::ParseResult {
-                entries: vec![],
-                errors: vec![citeme_engine_core::parsers::ParseErrorInfo {
-                    preview: input.chars().take(80).collect(),
-                    error: "could not detect format".to_string(),
-                }],
-                format: "unknown".to_string(),
-                truncated: false,
-                scanned_entries: 0,
-            },
-        };
+        // Detection + dispatch live in core so the size guard runs before the
+        // detector reads the whole input, and so both are covered by Rust
+        // tests rather than only through the Wasm boundary.
+        let result = citeme_engine_core::parsers::parse_auto(input, &options);
         serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     }
 

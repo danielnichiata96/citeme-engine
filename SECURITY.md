@@ -37,6 +37,13 @@ application:
 
 ## What doesn't
 
+- **Unescaped HTML in formatted output.** The HTML output format emits markup
+  by design — CSL styles and CSL-JSON legitimately carry `<i>`, `<sub>`,
+  `<span class="nocase">` — and the engine cannot tell that apart from markup
+  an attacker placed in a title. Values are passed through verbatim, exactly
+  as citeproc-js and citation-js do. Sanitizing is the consumer's job, or use
+  the `plain` output format. Documented in the README; a tag allowlist is
+  under consideration but is a contract change, not a patch.
 - Rendering output you consider incorrect for a given CSL style. That's a
   correctness bug — open a normal issue.
 - Calling the API in a way the documentation says will throw (unloaded locale,

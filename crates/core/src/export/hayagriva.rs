@@ -24,7 +24,15 @@ fn format_author_yaml(author: &Value) -> String {
     }
     let family = author["family"].as_str().unwrap_or("");
     let given = author["given"].as_str().unwrap_or("");
-    let prefix = author["dropping-particle"].as_str().unwrap_or("");
+    // Both particle kinds belong in the rendered name. Reading only
+    // `dropping-particle` turned "Maria da Silva" into "Maria Silva".
+    let prefix = ["dropping-particle", "non-dropping-particle"]
+        .iter()
+        .filter_map(|k| author[*k].as_str())
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
 
     let mut name = String::new();
     if !given.is_empty() {
@@ -32,7 +40,7 @@ fn format_author_yaml(author: &Value) -> String {
         name.push(' ');
     }
     if !prefix.is_empty() {
-        name.push_str(prefix);
+        name.push_str(&prefix);
         name.push(' ');
     }
     name.push_str(family);
@@ -118,14 +126,16 @@ fn is_language_tag(s: &str) -> bool {
         })
 }
 
-/// Convert a CSL-JSON item to a Hayagriva YAML entry string.
-pub fn csl_json_to_hayagriva(item: &Value) -> String {
-    let csl_type = item["type"].as_str().unwrap_or("article-journal");
-    let hay_type = csl_type_to_hayagriva(csl_type);
-
-    let raw_key = item["id"].as_str().unwrap_or("entry");
-    // Sanitize key: replace non-alphanumeric chars (except - and _) with _
-    let key: String = raw_key
+/// Resolve the YAML mapping key for an item: the sanitized `id`, or `entry`
+/// when the id is absent, empty, or sanitizes to nothing.
+///
+/// A key must never be empty — `"": {…}` is not a usable entry — and callers
+/// exporting more than one item must disambiguate, because duplicate YAML
+/// keys mean the last one silently wins and the earlier items vanish on load.
+fn resolve_hayagriva_key(item: &Value) -> String {
+    let sanitized: String = item["id"]
+        .as_str()
+        .unwrap_or("")
         .chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' || c == '_' {
@@ -135,6 +145,24 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
             }
         })
         .collect();
+
+    if sanitized.chars().any(|c| c.is_alphanumeric()) {
+        sanitized
+    } else {
+        "entry".to_string()
+    }
+}
+
+/// Convert a CSL-JSON item to a Hayagriva YAML entry string.
+pub fn csl_json_to_hayagriva(item: &Value) -> String {
+    csl_json_to_hayagriva_with_key(item, &resolve_hayagriva_key(item))
+}
+
+/// Convert a CSL-JSON item to a Hayagriva YAML entry string under an explicit
+/// key. Used by the array exporter to emit disambiguated keys.
+pub(crate) fn csl_json_to_hayagriva_with_key(item: &Value, key: &str) -> String {
+    let csl_type = item["type"].as_str().unwrap_or("article-journal");
+    let hay_type = csl_type_to_hayagriva(csl_type);
 
     let mut lines: Vec<String> = Vec::new();
 
@@ -274,9 +302,22 @@ pub fn csl_json_to_hayagriva(item: &Value) -> String {
 
 /// Convert multiple CSL-JSON items to a Hayagriva YAML file string.
 pub fn csl_json_array_to_hayagriva(items: &[Value]) -> String {
+    // Keys must be unique across the file: items with no `id` all resolved to
+    // the literal `entry`, so exporting three of them produced one entry and
+    // silently dropped two on load.
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut out = items
         .iter()
-        .map(csl_json_to_hayagriva)
+        .map(|item| {
+            let base = resolve_hayagriva_key(item);
+            let mut key = base.clone();
+            let mut n = 1;
+            while !used.insert(key.clone()) {
+                n += 1;
+                key = format!("{base}-{n}");
+            }
+            csl_json_to_hayagriva_with_key(item, &key)
+        })
         .collect::<Vec<_>>()
         .join("\n\n");
     out.push('\n');

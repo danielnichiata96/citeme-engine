@@ -9,8 +9,10 @@
 use citeme_engine_core::export::biblatex::csl_json_array_to_biblatex;
 use citeme_engine_core::export::bibtex::{csl_json_array_to_bibtex, csl_json_to_bibtex};
 use citeme_engine_core::export::hayagriva::csl_json_array_to_hayagriva;
+use citeme_engine_core::export::ris::csl_json_to_ris;
 use citeme_engine_core::parsers::bibtex::parse_bibtex;
 use citeme_engine_core::parsers::detect::{detect_format, InputFormat};
+use citeme_engine_core::parsers::ris::parse_ris;
 use citeme_engine_core::parsers::ParseOptions;
 use serde_json::{json, Value};
 
@@ -213,5 +215,185 @@ fn parse_errors_are_capped() {
         res.errors.len() <= 100,
         "error array must be bounded, got {}",
         res.errors.len()
+    );
+}
+
+// ── Hostile author names ─────────────────────────────────────────────
+//
+// The gate above only ever fed hostile *field* values. Author names take a
+// different code path (`format_authors`) that skipped escaping entirely, so a
+// family name carrying `}` closed the field and injected a second record.
+
+fn hostile_author_items() -> Vec<Value> {
+    vec![
+        json!({
+            "type": "article-journal",
+            "id": "inj1",
+            "title": "Good title",
+            "author": [{"family": "X}, title={pwned}}\n@book{injected", "given": "E"}],
+            "issued": {"date-parts": [[2024]]}
+        }),
+        json!({
+            "type": "book",
+            "id": "inj2",
+            "title": "T",
+            "author": [{"literal": "Institute of {Things} & Co. }"}],
+            "issued": {"date-parts": [[2020]]}
+        }),
+        json!({
+            "type": "article-journal",
+            "id": "inj3",
+            "title": "T",
+            "editor": [{"family": "A\\b{c}", "given": "D% E$"}],
+            "issued": {"date-parts": [[2021]]}
+        }),
+    ]
+}
+
+#[test]
+fn bibtex_export_escapes_hostile_author_names() {
+    for item in hostile_author_items() {
+        let bib = csl_json_to_bibtex(&item);
+        // The real test is the round-trip: a `@` inside a properly escaped
+        // value is inert, so counting `@` would measure the wrong thing.
+        let (entries, errors) = reimport(&bib);
+        assert_eq!(
+            (entries, errors),
+            (1, 0),
+            "hostile author must re-import as exactly one clean entry:\n{bib}"
+        );
+    }
+}
+
+#[test]
+fn biblatex_export_escapes_hostile_author_names() {
+    let items = hostile_author_items();
+    let bib = csl_json_array_to_biblatex(&items);
+    let (entries, errors) = reimport(&bib);
+    assert_eq!(
+        (entries, errors),
+        (items.len(), 0),
+        "hostile authors must re-import cleanly:\n{bib}"
+    );
+}
+
+// ── RIS round-trip ───────────────────────────────────────────────────
+//
+// RIS is line-oriented: a newline inside any value ends the field, and a
+// crafted one ends the whole record and opens another. Nothing was filtered,
+// and the re-import reported zero errors — silent corruption, no fallback.
+
+#[test]
+fn ris_export_neutralizes_newline_injection() {
+    let item = json!({
+        "type": "article-journal",
+        "id": "r1",
+        "title": "Good\nER  - \nTY  - BOOK\nTI  - Injected Book",
+        "author": [{"family": "S\nAU  - Ghost, G", "given": "J"}],
+        "abstract": "line one\r\nER  - \r\nTY  - CHAP",
+        "issued": {"date-parts": [[2024]]}
+    });
+    let ris = csl_json_to_ris(&item);
+    assert_eq!(
+        ris.matches("TY  - ").count(),
+        1,
+        "exactly one record may be opened:\n{ris}"
+    );
+    assert_eq!(
+        ris.matches("ER  - ").count(),
+        1,
+        "exactly one record may be closed:\n{ris}"
+    );
+    let back = parse_ris(&ris, &ParseOptions::default());
+    assert_eq!(
+        back.entries.len(),
+        1,
+        "must re-import as exactly one entry:\n{ris}"
+    );
+}
+
+#[test]
+fn ris_export_round_trips_core_fields() {
+    let item = json!({
+        "type": "article-journal",
+        "id": "r2",
+        "title": "A Study of Things",
+        "author": [{"family": "Souza", "given": "Bruno"}],
+        "container-title": "Nature",
+        "issued": {"date-parts": [[2023]]},
+        "DOI": "10.1234/x"
+    });
+    let ris = csl_json_to_ris(&item);
+    let back = parse_ris(&ris, &ParseOptions::default());
+    assert_eq!((back.entries.len(), back.errors.len()), (1, 0), "{ris}");
+    let got = &back.entries[0];
+    assert_eq!(got["title"].as_str(), Some("A Study of Things"), "{ris}");
+    assert_eq!(got["DOI"].as_str(), Some("10.1234/x"), "{ris}");
+}
+
+// ── Name particles ───────────────────────────────────────────────────
+//
+// CiteMe emits `non-dropping-particle` for names like "Maria da Silva"
+// (paper-to-csl.ts). Every exporter read only `dropping-particle`, so the
+// particle was silently dropped — a visible citation error in pt/es/nl/de.
+
+#[test]
+fn exports_preserve_non_dropping_particle() {
+    let items = vec![json!({
+        "type": "book",
+        "id": "p1",
+        "title": "T",
+        "author": [{
+            "family": "Silva",
+            "given": "Maria",
+            "non-dropping-particle": "da"
+        }],
+        "issued": {"date-parts": [[2024]]}
+    })];
+
+    let bib = csl_json_array_to_bibtex(&items);
+    assert!(
+        bib.contains("da Silva"),
+        "bibtex must keep the particle:\n{bib}"
+    );
+
+    let biblatex = csl_json_array_to_biblatex(&items);
+    assert!(
+        biblatex.contains("da Silva"),
+        "biblatex must keep the particle:\n{biblatex}"
+    );
+
+    let ris = csl_json_to_ris(&items[0]);
+    assert!(
+        ris.contains("da Silva"),
+        "ris must keep the particle:\n{ris}"
+    );
+
+    let yaml = csl_json_array_to_hayagriva(&items);
+    assert!(
+        yaml.contains("da Silva"),
+        "hayagriva must keep the particle:\n{yaml}"
+    );
+}
+
+// ── Hayagriva keys ───────────────────────────────────────────────────
+//
+// Items without an `id` all took the literal key `entry`, and `id: ""`
+// emitted an empty key. Duplicate YAML keys mean the last item silently wins.
+
+#[test]
+fn hayagriva_keys_are_unique_and_non_empty() {
+    let items = vec![
+        json!({"type": "book", "title": "A"}),
+        json!({"type": "book", "title": "B"}),
+        json!({"id": "", "type": "book", "title": "C"}),
+    ];
+    let yaml = csl_json_array_to_hayagriva(&items);
+    let lib = hayagriva::io::from_yaml_str(&yaml);
+    assert!(lib.is_ok(), "must load: {:?}\n{yaml}", lib.err());
+    assert_eq!(
+        lib.unwrap().len(),
+        items.len(),
+        "every item needs its own key:\n{yaml}"
     );
 }

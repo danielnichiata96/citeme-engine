@@ -60,14 +60,23 @@ pub fn parse_ris(input: &str, options: &ParseOptions) -> ParseResult {
             continue;
         }
 
-        // RIS lines: "XX  - value" (tag is first 2-4 chars, then "  - ", then value)
-        // Handle "ER  -" (end record) which may lack trailing space
-        let (tag, value) = if let Some(pos) = line.find("  - ") {
-            (line[..pos].trim(), line[pos + 4..].trim())
-        } else if line.starts_with("ER  -") {
-            ("ER", "")
-        } else {
-            continue;
+        // RIS lines: "XX  - value" — tag, two spaces, a dash, then the value.
+        // The space after the dash is conventional, not guaranteed: real
+        // exporters emit "TY  -JOUR" too, and requiring it made the parser
+        // skip every line of a file `detect_format` had accepted as RIS,
+        // returning zero entries and zero errors.
+        let (tag, value) = match line.find("  -") {
+            Some(pos) => {
+                let tag = line[..pos].trim();
+                let is_tag =
+                    (2..=4).contains(&tag.len()) && tag.chars().all(|c| c.is_ascii_alphanumeric());
+                if !is_tag {
+                    continue;
+                }
+                let rest = &line[pos + 3..];
+                (tag, rest.strip_prefix(' ').unwrap_or(rest).trim())
+            }
+            None => continue,
         };
 
         match tag {

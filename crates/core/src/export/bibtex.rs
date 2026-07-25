@@ -63,26 +63,39 @@ pub(crate) fn format_authors(authors: &[Value]) -> String {
         .iter()
         .map(|a| {
             if let Some(literal) = a["literal"].as_str() {
-                format!("{{{literal}}}")
+                format!("{{{}}}", escape_bibtex(literal))
             } else {
-                let family = a["family"].as_str().unwrap_or("");
-                let given = a["given"].as_str().unwrap_or("");
-                let prefix = a["dropping-particle"].as_str().unwrap_or("");
-                let suffix = a["suffix"].as_str().unwrap_or("");
+                // Every part is escaped: an unescaped `}` in a family name used
+                // to close the field and let the rest of the value open a
+                // second entry, corrupting the file without raising anything.
+                let family = escape_bibtex(a["family"].as_str().unwrap_or(""));
+                let given = escape_bibtex(a["given"].as_str().unwrap_or(""));
+                let suffix = escape_bibtex(a["suffix"].as_str().unwrap_or(""));
+                // CSL name order is: given · dropping · non-dropping · family.
+                // Reading only `dropping-particle` silently lost the "da" in
+                // "Maria da Silva" — the form CiteMe actually emits.
+                let prefix = ["dropping-particle", "non-dropping-particle"]
+                    .iter()
+                    .filter_map(|k| a[*k].as_str())
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(escape_bibtex)
+                    .collect::<Vec<_>>()
+                    .join(" ");
 
                 let mut name = String::new();
                 if !prefix.is_empty() {
-                    name.push_str(prefix);
+                    name.push_str(&prefix);
                     name.push(' ');
                 }
-                name.push_str(family);
+                name.push_str(&family);
                 if !suffix.is_empty() {
                     name.push_str(", ");
-                    name.push_str(suffix);
+                    name.push_str(&suffix);
                 }
                 if !given.is_empty() {
                     name.push_str(", ");
-                    name.push_str(given);
+                    name.push_str(&given);
                 }
                 name
             }

@@ -51,3 +51,70 @@ pub struct ParseErrorInfo {
     pub preview: String,
     pub error: String,
 }
+
+impl ParseResult {
+    /// A refusal: no entries, one explanatory error, marked truncated.
+    fn refused(format: &str, input: &str, error: &str) -> Self {
+        Self {
+            entries: vec![],
+            errors: vec![ParseErrorInfo {
+                preview: input.chars().take(80).collect(),
+                error: error.to_string(),
+            }],
+            format: format.to_string(),
+            truncated: true,
+            scanned_entries: 0,
+        }
+    }
+}
+
+/// Detect the input format and parse it.
+///
+/// The size guard runs **before** detection on purpose: proving that input is
+/// JSON means deserializing all of it into a `Value`, so detecting first let a
+/// document far over `max_input_bytes` be fully allocated and parsed before
+/// any per-format parser got the chance to refuse it.
+pub fn parse_auto(input: &str, options: &ParseOptions) -> ParseResult {
+    if input.len() > options.max_input_bytes {
+        return ParseResult::refused(
+            "unknown",
+            input,
+            &format!(
+                "input too large: {} bytes (max {})",
+                input.len(),
+                options.max_input_bytes
+            ),
+        );
+    }
+
+    let format = detect::detect_format(input);
+    let result = match format {
+        detect::InputFormat::Bibtex => bibtex::parse_bibtex(input, options),
+        detect::InputFormat::Ris => ris::parse_ris(input, options),
+        detect::InputFormat::CslJson => csl_json::parse_csl_json(input, options),
+        detect::InputFormat::Medline => medline::parse_medline(input, options),
+        detect::InputFormat::Unknown => {
+            return ParseResult {
+                truncated: false,
+                ..ParseResult::refused("unknown", input, "could not detect format")
+            }
+        }
+    };
+
+    // A detected format that yields nothing and says nothing is the worst
+    // outcome for a consumer: indistinguishable from "the file was empty".
+    if result.entries.is_empty() && result.errors.is_empty() && !input.trim().is_empty() {
+        return ParseResult {
+            errors: vec![ParseErrorInfo {
+                preview: input.chars().take(80).collect(),
+                error: format!(
+                    "detected {} but no entries could be read from it",
+                    result.format
+                ),
+            }],
+            ..result
+        };
+    }
+
+    result
+}
