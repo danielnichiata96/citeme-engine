@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a369ac9273d63bb1229afdcdd862b229b74c9223133fcfc4c28a926b3570fc81 # shrinks to item = Object {"issued": Object {"raw": String("2019/2020")}, "type": String("article-journal")}, other = Object {"type": String("article-journal")}, style = Index(0), plain = false, prose = false, abnt = false, french = false
+cc da190e116514a6c6d114222d1366ec483c03fc8fb12e2278386b85912a1b6113 # shrinks to s = ")(", in_text = true
+cc 63d7c6d18ddaf851826411ed473c7213b924f96aa6f3de15040bf96df41159e6 # shrinks to item = Object {"type": String("article-journal")}, other = Object {"type": String("article-journal"), "volume": String(".\u{1e000}")}, style = Index(10248191152060862009), plain = false, prose = false, abnt = false, french = false

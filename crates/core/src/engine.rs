@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Deserialize;
 
@@ -8,6 +8,7 @@ use hayagriva::{
     CitePurpose,
 };
 
+use crate::csl_item::{self, ItemProblem};
 use crate::error::EngineError;
 use crate::normalize::normalize_csl_xml;
 use crate::types::{FormatOptions, FormatResult, OutputFormat};
@@ -139,9 +140,12 @@ impl CitationEngine {
             .ok_or_else(|| EngineError::StyleNotLoaded(style_name.into()))?;
         self.ensure_locale_available(locale_code)?;
 
-        // Parse CSL-JSON string into citationberg::json::Item
-        // This uses the csl-json feature — Item implements EntryLike
-        let item: hayagriva::citationberg::json::Item = serde_json::from_str(csl_json_str)
+        // Parse, prepare (see `csl_item`) and read into citationberg's
+        // `json::Item`, which the csl-json feature makes an `EntryLike`.
+        let value: serde_json::Value = serde_json::from_str(csl_json_str)
+            .map_err(|e| EngineError::InvalidCslJson(format!("{e}")))?;
+        let value = csl_item::prepare(&value).map_err(|p| item_error(p, None))?;
+        let item = hayagriva::citationberg::json::Item::deserialize(&value)
             .map_err(|e| EngineError::InvalidCslJson(format!("{e}")))?;
 
         let locale = self.resolve_locale(locale_code);
@@ -195,12 +199,13 @@ impl CitationEngine {
         // Fallback: if Hayagriva produced empty output, build a degraded citation
         if reference.is_empty() && in_text.is_empty() {
             let fallback = Self::build_fallback(csl_json_str);
-            return Ok(Self::apply_abnt_if_needed(fallback, options));
+            return Ok(Self::apply_abnt_if_needed(fallback, options, &value));
         }
 
         Ok(Self::apply_abnt_if_needed(
             FormatResult { reference, in_text },
             options,
+            &value,
         ))
     }
 
@@ -224,51 +229,19 @@ impl CitationEngine {
             .ok_or_else(|| EngineError::StyleNotLoaded(style_name.into()))?;
         self.ensure_locale_available(locale_code)?;
 
-        let mut items: Vec<serde_json::Value> = serde_json::from_str(csl_json_array_str)
+        let items: Vec<serde_json::Value> = serde_json::from_str(csl_json_array_str)
             .map_err(|e| EngineError::InvalidCslJson(format!("{e}")))?;
+        let items = items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| csl_item::prepare(item).map_err(|p| item_error(p, Some(i))))
+            .collect::<Result<Vec<_>, _>>()?;
 
         if items.is_empty() {
             return Ok(vec![]);
         }
 
-        // Inject synthetic ids for items that lack them, so the bibliography
-        // key-based lookup works correctly for all items. Numeric ids are
-        // valid CSL-JSON and keep their identity as strings: replacing them
-        // per position split one item cited twice into two entries.
-        for (i, item) in items.iter_mut().enumerate() {
-            if let Some(obj) = item.as_object_mut() {
-                let id = match obj.get("id") {
-                    Some(serde_json::Value::String(s)) if !s.is_empty() => continue,
-                    Some(serde_json::Value::Number(n)) => n.to_string(),
-                    _ => format!("_citeme_batch_{i}"),
-                };
-                obj.insert("id".to_string(), serde_json::Value::String(id));
-            }
-        }
-
-        // Disambiguate DISTINCT items that share an id — they would collide
-        // in the bibliography key lookup and all render the first item's
-        // reference. Identical duplicates keep their shared id: the same
-        // entry cited twice is one bibliography entry, and splitting it
-        // would trigger spurious year-suffix disambiguation ("2024a"/"b").
-        let mut first_occurrence: HashMap<String, usize> = HashMap::new();
-        for i in 0..items.len() {
-            let id = items[i]["id"].as_str().unwrap_or_default().to_string();
-            match first_occurrence.get(&id) {
-                None => {
-                    first_occurrence.insert(id, i);
-                }
-                Some(&first) if items[first] != items[i] => {
-                    if let Some(obj) = items[i].as_object_mut() {
-                        obj.insert(
-                            "id".to_string(),
-                            serde_json::Value::String(format!("_citeme_batch_dup_{i}")),
-                        );
-                    }
-                }
-                Some(_) => {}
-            }
-        }
+        let (entries, cited) = batch_entries(items);
 
         let locale = self.resolve_locale(locale_code);
         let buf_format = match options.output_format {
@@ -276,9 +249,9 @@ impl CitationEngine {
             OutputFormat::Plain => BufWriteFormat::Plain,
         };
 
-        // Parse all items — deserialize from &Value (no per-item clone;
-        // `items` stays owned for the rare empty-output fallback below).
-        let parsed_items: Vec<hayagriva::citationberg::json::Item> = items
+        // Deserialize each entry once, from &Value (`entries` stays owned
+        // for the rare empty-output fallback below).
+        let parsed_entries: Vec<hayagriva::citationberg::json::Item> = entries
             .iter()
             .map(|v| {
                 hayagriva::citationberg::json::Item::deserialize(v)
@@ -289,8 +262,8 @@ impl CitationEngine {
         // Use ONE shared driver for the entire batch
         let mut driver = BibliographyDriver::new();
 
-        for item in &parsed_items {
-            let mut cite_item = CitationItem::with_entry(item);
+        for &entry in &cited {
+            let mut cite_item = CitationItem::with_entry(&parsed_entries[entry]);
             if options.prose {
                 cite_item = cite_item.kind(CitePurpose::Prose);
             }
@@ -310,8 +283,7 @@ impl CitationEngine {
             locale_files: &self.locales,
         });
 
-        // Build bibliography key-based lookup.
-        // All items now have ids (synthetic ones injected above for items without).
+        // Build bibliography key-based lookup; every entry has a unique id.
         let bib_map: HashMap<String, String> = rendered
             .bibliography
             .map(|bib| {
@@ -328,15 +300,15 @@ impl CitationEngine {
             .unwrap_or_default();
 
         // Match each citation to its bibliography entry by key
-        let mut results = Vec::with_capacity(parsed_items.len());
+        let mut results = Vec::with_capacity(cited.len());
 
-        for (i, cite) in rendered.citations.iter().enumerate() {
-            let item_key = parsed_items[i]
-                .id()
-                .map(|cow| cow.into_owned())
-                .unwrap_or_else(|| format!("_citeme_batch_{i}"));
-
-            let reference = bib_map.get(&item_key).cloned().unwrap_or_default();
+        for (cite, &entry) in rendered.citations.iter().zip(&cited) {
+            let item = &entries[entry];
+            let reference = item["id"]
+                .as_str()
+                .and_then(|id| bib_map.get(id))
+                .cloned()
+                .unwrap_or_default();
 
             let in_text = {
                 let mut buf = String::new();
@@ -345,12 +317,11 @@ impl CitationEngine {
             };
 
             let result = if reference.is_empty() && in_text.is_empty() {
-                let item_json = serde_json::to_string(&items[i]).unwrap_or_default();
-                Self::build_fallback(&item_json)
+                Self::build_fallback(&item.to_string())
             } else {
                 FormatResult { reference, in_text }
             };
-            results.push(Self::apply_abnt_if_needed(result, options));
+            results.push(Self::apply_abnt_if_needed(result, options, item));
         }
 
         Ok(results)
@@ -372,9 +343,22 @@ impl CitationEngine {
         buf.trim().to_string()
     }
 
-    /// Apply ABNT post-processing if the options flag is set.
-    fn apply_abnt_if_needed(result: FormatResult, options: &FormatOptions) -> FormatResult {
-        if options.abnt_post_process {
+    /// Apply ABNT post-processing if the options flag is set and the entry
+    /// is led by a name.
+    ///
+    /// With no author, editor, translator or collection editor, the ABNT
+    /// styles lead with the title instead — and uppercasing it as a family
+    /// name printed "PESQUISA NACIONAL POR AMOSTRA DE DOMICÍLIOS, síntese de
+    /// indicadores" and "(MANUAL DE REDAÇÃO, 2010)".
+    fn apply_abnt_if_needed(
+        result: FormatResult,
+        options: &FormatOptions,
+        item: &serde_json::Value,
+    ) -> FormatResult {
+        let led_by_name = ["author", "editor", "translator", "collection-editor"]
+            .iter()
+            .any(|variable| item[variable].as_array().is_some_and(|n| !n.is_empty()));
+        if options.abnt_post_process && led_by_name {
             FormatResult {
                 reference: crate::abnt::post_process_abnt(&result.reference, false),
                 in_text: crate::abnt::post_process_abnt(&result.in_text, true),
@@ -413,6 +397,72 @@ impl CitationEngine {
             reference: format!("{author} ({year}). {title}.{url_part}"),
             in_text: format!("({author}, {year})"),
         }
+    }
+}
+
+/// The distinct entries a batch cites, and the entry each position cites.
+///
+/// Identical items are one entry: the same item cited twice is one
+/// bibliography entry, and hayagriva tells entries apart by address when it
+/// numbers and disambiguates citations — a second copy was numbered "[3]"
+/// against its own entry's "[1]", and an id-less copy was disambiguated
+/// against itself ("2024a"/"2024b"). Every entry gets an id no other entry
+/// has, since the bibliography is looked up by id: distinct items sharing
+/// one all rendered the first item's reference. Numeric ids are valid
+/// CSL-JSON and keep their identity, as strings.
+fn batch_entries(items: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, Vec<usize>) {
+    fn own_id(item: &serde_json::Value) -> Option<String> {
+        match &item["id"] {
+            serde_json::Value::String(s) if !s.is_empty() => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
+    // Synthetic ids must not take an id an item brings, even a later one.
+    let brought: HashSet<String> = items.iter().filter_map(own_id).collect();
+    let mut assigned: HashSet<String> = HashSet::new();
+    // `serde_json::Map` is ordered by key, so equal items serialize equally.
+    let mut by_content: HashMap<String, usize> = HashMap::new();
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    let mut cited = Vec::with_capacity(items.len());
+
+    for (i, mut item) in items.into_iter().enumerate() {
+        let content = item.to_string();
+        if let Some(&entry) = by_content.get(&content) {
+            cited.push(entry);
+            continue;
+        }
+        let id = match own_id(&item) {
+            Some(id) if assigned.insert(id.clone()) => id,
+            _ => (0..)
+                .map(|n| match n {
+                    0 => format!("_citeme_batch_{i}"),
+                    n => format!("_citeme_batch_{i}_{n}"),
+                })
+                .find(|id| !brought.contains(id) && assigned.insert(id.clone()))
+                .unwrap_or_default(),
+        };
+        if let Some(fields) = item.as_object_mut() {
+            fields.insert("id".into(), serde_json::Value::String(id));
+        }
+        by_content.insert(content, entries.len());
+        cited.push(entries.len());
+        entries.push(item);
+    }
+    (entries, cited)
+}
+
+/// The error for an item `csl_item::prepare` refused; batch items are
+/// named by position.
+fn item_error(problem: ItemProblem, index: Option<usize>) -> EngineError {
+    let at = |message: String| match index {
+        Some(i) => format!("item {i}: {message}"),
+        None => message,
+    };
+    match problem {
+        ItemProblem::Invalid(message) => EngineError::InvalidCslJson(at(message)),
+        ItemProblem::Unsupported(message) => EngineError::UnsupportedCslJson(at(message)),
     }
 }
 
@@ -810,6 +860,86 @@ mod tests {
             "one item cited twice must not be disambiguated: {}",
             results[0].reference
         );
+    }
+
+    fn ieee_engine() -> CitationEngine {
+        let mut engine = CitationEngine::new();
+        engine
+            .load_style(
+                "ieee",
+                include_str!("../../../tests/fixtures/styles/ieee.csl"),
+            )
+            .unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+        engine
+    }
+
+    #[test]
+    fn test_format_batch_numbers_an_item_cited_twice_once() {
+        // hayagriva tells entries apart by address when it numbers and
+        // disambiguates citations: the same item cited again from a second
+        // copy got "[3]" in a numeric style while its entry said "[1]".
+        let alpha = r#"{"id": "a", "type": "article-journal", "title": "Alpha",
+            "author": [{"family": "Smith", "given": "John"}], "issued": {"date-parts": [[2020]]}}"#;
+        let beta = r#"{"id": "b", "type": "article-journal", "title": "Beta",
+            "author": [{"family": "Smith", "given": "John"}], "issued": {"date-parts": [[2020]]}}"#;
+        let batch = format!("[{alpha},{beta},{alpha}]");
+
+        let ieee = ieee_engine()
+            .format_batch(&batch, "ieee", "en-US", &FormatOptions::default())
+            .unwrap();
+        assert_eq!(ieee[0].in_text, "[1]");
+        assert_eq!(ieee[2].in_text, "[1]", "{ieee:?}");
+        assert_eq!(ieee[2].reference, ieee[0].reference);
+
+        let mut apa = CitationEngine::new();
+        apa.load_style("apa", SAMPLE_CSL).unwrap();
+        apa.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+        let apa = apa
+            .format_batch(&batch, "apa", "en-US", &FormatOptions::default())
+            .unwrap();
+        assert_eq!(apa[0].in_text, "(Smith, 2020a)");
+        assert_eq!(apa[2].in_text, apa[0].in_text, "{apa:?}");
+    }
+
+    #[test]
+    fn test_format_batch_identical_items_without_id_are_one_entry() {
+        // Without an id each copy got its own synthetic id, so the same item
+        // was disambiguated against itself ("2024a"/"2024b").
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+        let item = r#"{"type": "book", "title": "Same",
+            "author": [{"family": "Smith", "given": "J"}], "issued": {"date-parts": [[2024]]}}"#;
+        let results = engine
+            .format_batch(
+                &format!("[{item},{item}]"),
+                "apa",
+                "en-US",
+                &FormatOptions::default(),
+            )
+            .unwrap();
+        assert_eq!(results[0].reference, results[1].reference);
+        assert!(!results[0].reference.contains("2024a"), "{results:?}");
+    }
+
+    #[test]
+    fn test_format_batch_synthetic_ids_never_take_an_item_id() {
+        // The id-less item's synthetic id was "_citeme_batch_1" — the id the
+        // first item already carried — and it rendered the first item.
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+        let batch = r#"[
+            {"id": "_citeme_batch_1", "type": "book", "title": "First",
+             "author": [{"family": "Smith", "given": "J"}], "issued": {"date-parts": [[2020]]}},
+            {"type": "book", "title": "Second",
+             "author": [{"family": "Doe", "given": "J"}], "issued": {"date-parts": [[2021]]}}
+        ]"#;
+        let results = engine
+            .format_batch(batch, "apa", "en-US", &FormatOptions::default())
+            .unwrap();
+        assert!(results[1].reference.contains("Doe"), "{results:?}");
     }
 
     #[test]

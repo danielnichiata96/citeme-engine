@@ -1,6 +1,13 @@
 [workspace]
 members = ["crates/core", "crates/wasm"]
+exclude = ["vendor"]
 resolver = "2"
+
+# hayagriva 0.9.1 with one fix: a CSL affix check sliced text mid-character —
+# a panic, which aborts the Wasm instance. See vendor/README.md; delete this
+# once hayagriva ships the fix.
+[patch.crates-io]
+hayagriva = { path = "vendor/hayagriva" }
 
 [profile.release]
 opt-level = "z"

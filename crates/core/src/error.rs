@@ -17,6 +17,10 @@ pub enum EngineError {
     #[error("invalid CSL-JSON input: {0}")]
     InvalidCslJson(String),
 
+    /// Valid CSL-JSON the renderer cannot represent, such as a date range.
+    #[error("unsupported CSL-JSON input: {0}")]
+    UnsupportedCslJson(String),
+
     #[error("formatting failed: {0}")]
     FormatFailed(String),
 }
