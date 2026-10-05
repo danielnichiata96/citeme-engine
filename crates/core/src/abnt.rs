@@ -124,50 +124,105 @@ fn uppercase_text_only(s: &str) -> String {
 }
 
 fn post_process_in_text(text: &str) -> String {
-    let mut result = text.to_string();
-
-    if let (Some(open), Some(close)) = (result.find('('), result.rfind(')')) {
-        let inner = &result[open + 1..close];
-        let mut new_inner = String::new();
-
-        for part in inner.split(';') {
-            if !new_inner.is_empty() {
-                new_inner.push_str("; ");
-            }
-
-            let part = part.trim();
-            if let Some(comma_pos) = part.find(',') {
-                let name = part[..comma_pos].trim();
-                if is_protected_acronym(name) {
-                    new_inner.push_str(part);
-                } else {
-                    new_inner.push_str(&name.to_uppercase());
-                    new_inner.push_str(&part[comma_pos..]);
-                }
-            } else {
-                // No comma — could be a single name, "et al.", or a year
-                let trimmed = part.trim();
-                let is_name = !trimmed.is_empty()
-                    && trimmed
-                        .chars()
-                        .next()
-                        .is_some_and(|c| c.is_alphabetic() && c.is_uppercase())
-                    && !trimmed.contains('.')
-                    && !trimmed.chars().any(|c| c.is_ascii_digit());
-                if is_name && !is_protected_acronym(trimmed) {
-                    new_inner.push_str(&trimmed.to_uppercase());
-                } else {
-                    new_inner.push_str(part);
-                }
-            }
-        }
-
-        let prefix = &text[..open];
-        let suffix = &text[close + 1..];
-        result = format!("{prefix}({new_inner}){suffix}");
+    let (Some(open), Some(close)) = (text.find('('), text.rfind(')')) else {
+        return text.to_string();
+    };
+    // A ")" before the first "(" is not a parenthesized citation.
+    if close < open {
+        return text.to_string();
     }
 
-    result
+    let inner = &text[open + 1..close];
+    let mut new_inner = String::new();
+
+    for part in split_outside_tags(inner, ';') {
+        if !new_inner.is_empty() {
+            new_inner.push_str("; ");
+        }
+
+        let part = part.trim();
+        if let Some(comma_pos) = find_first_text_comma(part) {
+            let name = part[..comma_pos].trim();
+            if is_protected_acronym(&strip_html_tags(name)) {
+                new_inner.push_str(part);
+            } else {
+                new_inner.push_str(&uppercase_name(name));
+                new_inner.push_str(&part[comma_pos..]);
+            }
+        } else {
+            // No comma — could be a single name, "et al.", or a year
+            let plain = strip_html_tags(part);
+            let trimmed = plain.trim();
+            let is_name = !trimmed.is_empty()
+                && trimmed
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphabetic() && c.is_uppercase())
+                && !trimmed.contains('.')
+                && !trimmed.chars().any(|c| c.is_ascii_digit());
+            if is_name && !is_protected_acronym(trimmed) {
+                new_inner.push_str(&uppercase_name(part));
+            } else {
+                new_inner.push_str(part);
+            }
+        }
+    }
+
+    format!("{}({new_inner}){}", &text[..open], &text[close + 1..])
+}
+
+/// Split on `separator` outside HTML tags — a style's markup carries `;`
+/// in its CSS (`style="font-variant: small-caps;"`).
+fn split_outside_tags(text: &str, separator: char) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut in_tag = false;
+    let mut start = 0;
+    for (i, c) in text.char_indices() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            c if c == separator && !in_tag => {
+                parts.push(&text[start..i]);
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(&text[start..]);
+    parts
+}
+
+/// Uppercase a name in an ABNT citation, leaving markup and a following
+/// "et al." as they are: NBR 10520 prints "et al." in lower case.
+fn uppercase_name(name: &str) -> String {
+    match find_et_al(name) {
+        Some(at) => format!("{}{}", uppercase_text_only(&name[..at]), &name[at..]),
+        None => uppercase_text_only(name),
+    }
+}
+
+/// Byte offset of a standalone "et al" in any case — not the one inside
+/// "Bennet Alvarez".
+fn find_et_al(text: &str) -> Option<usize> {
+    // ASCII lowercasing keeps every byte offset valid in `text`.
+    let lower = text.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(found) = lower[from..].find("et al") {
+        let at = from + found;
+        let starts_word = lower[..at]
+            .chars()
+            .next_back()
+            .is_none_or(|c| c.is_whitespace() || c == '>');
+        let ends_word = lower[at + 5..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric());
+        if starts_word && ends_word {
+            return Some(at);
+        }
+        from = at + 1;
+    }
+    None
 }
 
 #[cfg(test)]
@@ -227,6 +282,51 @@ mod tests {
         assert!(
             result.contains("SILVA"),
             "in-text family name should be uppercased: {result}"
+        );
+    }
+
+    #[test]
+    fn in_text_parentheses_out_of_order_are_left_alone() {
+        // `&result[open + 1..close]` panicked when the first ")" came
+        // before the first "(" — any style's in-text with ABNT on.
+        assert_eq!(post_process_abnt("a) (b", true), "a) (b");
+        assert_eq!(post_process_abnt("Smith, x) y (z", true), "Smith, x) y (z");
+    }
+
+    #[test]
+    fn et_al_stays_in_lower_case() {
+        // NBR 10520 prints "et al." in lower case; it read as part of the
+        // family name and came out "(SILVA ET AL., 2024)".
+        assert_eq!(
+            post_process_abnt("(Silva et al., 2024)", true),
+            "(SILVA et al., 2024)"
+        );
+        assert_eq!(
+            post_process_abnt(
+                r#"(Silva <span style="font-style: italic;">et al.</span>, 2024)"#,
+                true
+            ),
+            r#"(SILVA <span style="font-style: italic;">et al.</span>, 2024)"#
+        );
+        assert_eq!(
+            post_process_abnt("(Souza; Silva et al., 2024)", true),
+            "(SOUZA; SILVA et al., 2024)"
+        );
+        // Only the standalone words: "Bennet Alvarez" holds "et al" too.
+        assert_eq!(
+            post_process_abnt("(Bennet Alvarez, 2024)", true),
+            "(BENNET ALVAREZ, 2024)"
+        );
+    }
+
+    #[test]
+    fn in_text_markup_is_not_uppercased() {
+        assert_eq!(
+            post_process_abnt(
+                r#"(<span style="font-variant: small-caps;">Silva</span>, 2024)"#,
+                true
+            ),
+            r#"(<span style="font-variant: small-caps;">SILVA</span>, 2024)"#
         );
     }
 
