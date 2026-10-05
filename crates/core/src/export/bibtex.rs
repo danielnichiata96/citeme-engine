@@ -1,35 +1,25 @@
 use super::{date_parts, text_field};
 use serde_json::Value;
 
-/// Degree level of a thesis, read from its CSL `genre`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ThesisKind {
-    Masters,
-    Doctoral,
-}
-
-/// Classify a thesis genre ("PhD thesis", "Dissertação (Mestrado)", "Tese
-/// (Doutorado)", …). Master's markers are checked first: in Portuguese a
-/// *dissertação* is the master's work and a *tese* the doctoral one.
-pub(crate) fn thesis_kind(genre: Option<&str>) -> Option<ThesisKind> {
-    let lower = genre?.to_lowercase();
-    let has = |needles: &[&str]| needles.iter().any(|n| lower.contains(n));
-    if has(&[
-        "master",
-        "mestrado",
-        "m.s.",
-        "msc",
-        "m.sc",
-        "maestr",
-        "dissertação",
-        "dissertacao",
-    ]) {
-        Some(ThesisKind::Masters)
-    } else if has(&["phd", "ph.d", "doctor", "doutorado", "doctorat", "tese"]) {
-        Some(ThesisKind::Doctoral)
-    } else {
-        None
-    }
+/// Whether a thesis genre names a master's degree ("Master's thesis",
+/// "Dissertação (Mestrado)", MSc, maestría). In Portuguese a *dissertação*
+/// is the master's work and a *tese* the doctoral one.
+fn is_masters_thesis(genre: Option<&str>) -> bool {
+    genre.is_some_and(|g| {
+        let lower = g.to_lowercase();
+        [
+            "master",
+            "mestrado",
+            "m.s.",
+            "msc",
+            "m.sc",
+            "maestr",
+            "dissertação",
+            "dissertacao",
+        ]
+        .iter()
+        .any(|n| lower.contains(n))
+    })
 }
 
 /// CSL-JSON type → BibTeX entry type mapping.
@@ -40,10 +30,8 @@ fn csl_type_to_bibtex_with_genre(csl_type: &str, genre: Option<&str>) -> &'stati
         "book" => "book",
         "chapter" => "incollection",
         "paper-conference" => "inproceedings",
-        "thesis" => match thesis_kind(genre) {
-            Some(ThesisKind::Masters) => "mastersthesis",
-            _ => "phdthesis",
-        },
+        "thesis" if is_masters_thesis(genre) => "mastersthesis",
+        "thesis" => "phdthesis",
         "report" => "techreport",
         "webpage" | "post-weblog" => "misc",
         "dataset" => "misc",

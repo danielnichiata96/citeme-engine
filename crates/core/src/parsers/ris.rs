@@ -190,6 +190,7 @@ struct RisRecord {
     fields: serde_json::Map<String, Value>,
     authors: Vec<Value>,
     editors: Vec<Value>,
+    host_editors: Vec<Value>,
     keywords: Vec<String>,
     start_page: Option<String>,
     end_page: Option<String>,
@@ -204,6 +205,7 @@ impl RisRecord {
             fields: serde_json::Map::new(),
             authors: Vec::new(),
             editors: Vec::new(),
+            host_editors: Vec::new(),
             keywords: Vec::new(),
             start_page: None,
             end_page: None,
@@ -221,10 +223,15 @@ impl RisRecord {
             // editor, performer, … and stays unmapped).
             "ED" => self.editors.push(parse_ris_name(value)),
             "A2" if matches!(self.csl_type, "chapter" | "paper-conference") => {
-                self.editors.push(parse_ris_name(value))
+                self.host_editors.push(parse_ris_name(value))
             }
             "TI" | "T1" => {
                 entry.insert("title".into(), json!(value));
+            }
+            // BT is the primary title of a book in the RIS spec (TI still
+            // wins when both are present); for parts it names the host book.
+            "BT" if self.csl_type == "book" => {
+                entry.entry("title").or_insert_with(|| json!(value));
             }
             // Full container titles beat abbreviations whatever their order.
             "T2" | "JF" | "BT" => self.journal_full = Some(value.to_string()),
@@ -244,16 +251,12 @@ impl RisRecord {
                 }
             }
             // Y2 is the access date in the RIS spec and in Zotero/EndNote
-            // exports (the conference date for CONF). It is never the
-            // publication date — mapping it to `issued` let it overwrite DA.
+            // exports, for every type (conference papers included). It is
+            // never the publication date — mapping it to `issued` let it
+            // overwrite DA.
             "Y2" => {
                 if let Some(date) = parse_ris_date(value) {
-                    let key = if self.csl_type == "paper-conference" {
-                        "event-date"
-                    } else {
-                        "accessed"
-                    };
-                    entry.insert(key.into(), date);
+                    entry.insert("accessed".into(), date);
                 }
             }
             "VL" => {
@@ -300,8 +303,16 @@ impl RisRecord {
         if !self.authors.is_empty() {
             entry.insert("author".into(), json!(self.authors));
         }
-        if !self.editors.is_empty() {
-            entry.insert("editor".into(), json!(self.editors));
+        // A2 and ED may both name the host book's editors; list a person
+        // once. Repeats within one tag stay — two "Wang, L" can be two people.
+        let mut editors = self.host_editors.clone();
+        editors.extend(
+            self.editors
+                .into_iter()
+                .filter(|e| !self.host_editors.contains(e)),
+        );
+        if !editors.is_empty() {
+            entry.insert("editor".into(), json!(editors));
         }
         if !self.keywords.is_empty() {
             entry.insert("keyword".into(), json!(self.keywords.join(", ")));
@@ -435,13 +446,39 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_ris_y2_on_conference_is_event_date() {
-        let input = "TY  - CONF\nTI  - Talk\nPY  - 2019\nY2  - 2018/12/03/\nER  - ";
+    fn test_parse_ris_y2_on_conference_is_still_access_date() {
+        // Zotero and EndNote write the access date to Y2 for every type;
+        // reading it as the event date printed "Paper presented <access
+        // date>" in Chicago.
+        let input = "TY  - CONF\nTI  - Talk\nDA  - 2019/06//\nY2  - 2024/01/15/12:34:56\nER  - ";
         let result = parse_ris(input, &ParseOptions::default());
         let entry = &result.entries[0];
-        assert_eq!(entry["issued"]["date-parts"][0], json!([2019]));
-        assert_eq!(entry["event-date"]["date-parts"][0], json!([2018, 12, 3]));
-        assert!(entry.get("accessed").is_none(), "{entry}");
+        assert_eq!(entry["issued"]["date-parts"][0], json!([2019, 6]));
+        assert_eq!(entry["accessed"]["date-parts"][0], json!([2024, 1, 15]));
+        assert!(entry.get("event-date").is_none(), "{entry}");
+    }
+
+    #[test]
+    fn test_parse_ris_bt_is_the_title_of_a_book() {
+        // BT is the primary title for BOOK; as a container it rendered
+        // "The Book. In The Book."
+        let input = "TY  - BOOK\nTI  - The Book\nBT  - The Book\nER  - \nTY  - BOOK\nBT  - Only BT\nER  - \nTY  - CHAP\nTI  - Ch\nBT  - Host Book\nER  - ";
+        let result = parse_ris(input, &ParseOptions::default());
+        assert_eq!(result.entries[0]["title"], "The Book");
+        assert!(
+            result.entries[0].get("container-title").is_none(),
+            "{}",
+            result.entries[0]
+        );
+        assert_eq!(result.entries[1]["title"], "Only BT");
+        assert_eq!(result.entries[2]["container-title"], "Host Book");
+    }
+
+    #[test]
+    fn test_parse_ris_same_editor_in_ed_and_a2_is_listed_once() {
+        let input = "TY  - CHAP\nTI  - Ch\nA2  - Doe, Jane\nED  - Doe, Jane\nER  - ";
+        let result = parse_ris(input, &ParseOptions::default());
+        assert_eq!(result.entries[0]["editor"].as_array().unwrap().len(), 1);
     }
 
     #[test]

@@ -57,6 +57,9 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
     let mut current: Option<MedlineRecord> = None;
     let mut scanned = 0;
     let mut last_tag = String::new();
+    // Indent of the most recent tag line: column 0 in PubMed output, deeper
+    // when a record was pasted indented.
+    let mut tag_indent: Option<usize> = None;
 
     for line in input.lines() {
         // Blank line = record separator
@@ -70,11 +73,15 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
             continue;
         }
 
-        // PubMed indents wrapped lines by six spaces. That check has to come
-        // before tag parsing: a wrapped line opening with "HIV-1" or "IL-6"
-        // otherwise reads as tag "HIV"/"IL", which cuts the field short and
-        // files the rest of it under a tag nobody reads.
-        if line.starts_with("      ") {
+        // A wrapped line sits deeper than the tag lines (six spaces in
+        // PubMed's output). That check has to come before tag parsing: a
+        // wrapped line opening with "HIV-1" or "IL-6" otherwise reads as tag
+        // "HIV"/"IL", which cuts the field short and files the rest under a
+        // tag nobody reads. It is relative to the tag indent, not a fixed six
+        // spaces, so a record pasted with an indent still parses and a
+        // normalizer that shrank the indent still wraps.
+        let indent = line.len() - line.trim_start().len();
+        if tag_indent.is_some_and(|tags| indent > tags) {
             if let Some(ref mut record) = current {
                 record.continue_field(&last_tag, line.trim());
             }
@@ -82,19 +89,11 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
         }
 
         // MEDLINE tags are commonly fixed-width (`TI  - value`), but text
-        // normalizers often collapse the double spaces to `TI - value`, and
-        // may shrink the continuation indent too.
-        let (tag, value) = match parse_tag_line(line) {
-            Some(tag_value) => tag_value,
-            None => {
-                if line.starts_with(char::is_whitespace) {
-                    if let Some(ref mut record) = current {
-                        record.continue_field(&last_tag, line.trim());
-                    }
-                }
-                continue;
-            }
+        // normalizers often collapse the double spaces to `TI - value`.
+        let Some((tag, value)) = parse_tag_line(line) else {
+            continue;
         };
+        tag_indent = Some(indent);
 
         // A PMID inside a record that already has one means the blank line
         // between two records was lost; without this, both merge into one.
@@ -160,15 +159,23 @@ fn truncated_result(entries: Vec<Value>, scanned: usize) -> ParseResult {
     }
 }
 
+/// Tags `MedlineRecord::add_field` reads.
+const READ_TAGS: &[&str] = &[
+    "PMID", "TI", "FAU", "AU", "CN", "DP", "TA", "JT", "VI", "IP", "PG", "LID", "AID", "AB", "LA",
+    "PT", "IS", "PL", "OT",
+];
+
 fn parse_tag_line(line: &str) -> Option<(String, String)> {
     let (raw_tag, raw_value) = line.split_once('-')?;
+    let tag = raw_tag.trim();
     // Real tag lines put a space after the dash ("TI  - x", "PMID- 1") or end
-    // there. Requiring it keeps a de-indented wrapped line like
-    // "HIV-1 infection" from reading as tag "HIV".
-    if !(raw_value.is_empty() || raw_value.starts_with(char::is_whitespace)) {
+    // there. Normalizers sometimes eat that space, so the squeezed form is
+    // accepted — but only for tags we read, which keeps a de-indented wrapped
+    // line like "HIV-1 infection" from reading as tag "HIV".
+    let spaced = raw_value.is_empty() || raw_value.starts_with(char::is_whitespace);
+    if !spaced && !READ_TAGS.contains(&tag) {
         return None;
     }
-    let tag = raw_tag.trim();
     if !(2..=4).contains(&tag.len()) {
         return None;
     }
@@ -218,21 +225,36 @@ impl MedlineAuthor {
     }
 }
 
-/// `AU` form: "Smith JA" → family "Smith", given "J. A.". The trailing
-/// token is the initials; anything before it (particles included) is the
-/// family name. Initials are spelled out with periods because CSL
-/// processors initialize per word — a bare "JA" would render as "J.".
+/// `AU` form: "Smith JA" → family "Smith", given "J. A.". The token after
+/// the family name is the initials; anything before it (particles included)
+/// is the family name, and a generational suffix may follow ("Smith JA Jr").
+/// Initials are spelled out with periods because CSL processors initialize
+/// per word — a bare "JA" would render as "J.".
 fn abbreviated_author(au: &str) -> Value {
-    match au.rsplit_once(' ') {
-        Some((family, initials))
-            if !initials.is_empty() && initials.chars().all(|c| c.is_uppercase()) =>
+    let mut tokens: Vec<&str> = au.split_whitespace().collect();
+    // Three tokens at least: in "Vasquez IV" the "IV" is initials.
+    let suffix = if tokens.len() >= 3
+        && tokens.last().is_some_and(|t| {
+            ["Jr", "Jr.", "Sr", "Sr.", "II", "III", "IV", "2nd", "3rd"].contains(t)
+        }) {
+        tokens.pop()
+    } else {
+        None
+    };
+    match tokens.split_last() {
+        Some((initials, family))
+            if !family.is_empty() && initials.chars().all(|c| c.is_uppercase()) =>
         {
             let given = initials
                 .chars()
                 .map(|c| format!("{c}."))
                 .collect::<Vec<_>>()
                 .join(" ");
-            json!({"family": family.trim(), "given": given})
+            let mut name = json!({"family": family.join(" "), "given": given});
+            if let Some(suffix) = suffix {
+                name["suffix"] = json!(suffix);
+            }
+            name
         }
         _ => json!({"literal": au}),
     }
@@ -710,6 +732,43 @@ TA  - Proc Natl Acad Sci U S A\n";
         assert_eq!(parse("2023 Jan-Feb"), serde_json::json!([2023, 1]));
         assert_eq!(parse("2024"), serde_json::json!([2024]));
         assert_eq!(parse("2024 Mar 99"), serde_json::json!([2024, 3]));
+    }
+
+    #[test]
+    fn test_parse_medline_uniformly_indented_file_still_parses() {
+        // A whole record pasted with an indent: continuation means "more
+        // indented than the tag lines", not "starts with six spaces".
+        let input = "      PMID- 9\n      TI  - Indented title that wraps\n            onto a second line.\n      FAU - Smith, John\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        assert_eq!(result.entries.len(), 1, "{:?}", result.errors);
+        let first = &result.entries[0];
+        assert_eq!(first["PMID"], "9");
+        assert_eq!(
+            first["title"],
+            "Indented title that wraps onto a second line."
+        );
+        assert_eq!(first["author"][0]["family"], "Smith");
+    }
+
+    #[test]
+    fn test_parse_medline_known_tags_without_space_after_dash() {
+        // Normalizers sometimes eat the space after the dash. Known tags are
+        // still tags; an unknown word is not (that is the "HIV-1" guard).
+        let input = "PMID-123\nTI  -Squeezed title.\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        assert_eq!(result.entries[0]["PMID"], "123");
+        assert_eq!(result.entries[0]["title"], "Squeezed title.");
+        assert_eq!(parse_tag_line("HIV-1 infection"), None);
+    }
+
+    #[test]
+    fn test_parse_medline_abbreviated_author_with_suffix() {
+        let input = "PMID- 6\nAU  - Smith JA Jr\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        assert_eq!(
+            result.entries[0]["author"][0],
+            serde_json::json!({"family": "Smith", "given": "J. A.", "suffix": "Jr"})
+        );
     }
 
     #[test]

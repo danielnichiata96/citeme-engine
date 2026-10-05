@@ -1,6 +1,6 @@
 use super::bibtex::{
     csl_keyword_as_string, disambiguate_keys, escape_bibtex, format_authors, push_eprint,
-    push_escaped, push_verbatim, resolve_key, thesis_kind, ThesisKind,
+    push_escaped, push_verbatim, resolve_key,
 };
 use super::{date_parts, text_field};
 use serde_json::Value;
@@ -11,7 +11,7 @@ use serde_json::Value;
 /// - `@online` is a valid BibLaTeX entry type for `webpage` / `post-weblog`.
 /// - `@report` replaces `@techreport` (still accepted via alias).
 /// - `@thesis` unifies `phdthesis` and `mastersthesis`; the degree goes in
-///   the `type` field, read from `item["genre"]`.
+///   the `type` field, copied from `item["genre"]`.
 fn csl_type_to_biblatex(csl_type: &str) -> &'static str {
     match csl_type {
         "article-journal" | "article-magazine" | "article-newspaper" | "article" => "article",
@@ -106,18 +106,13 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
     push_escaped(&mut fields, publisher_field, text_field(item, "publisher"));
     push_escaped(&mut fields, "location", text_field(item, "publisher-place"));
 
-    // `@thesis` wants its degree in `type`: the localization keys biblatex
-    // knows, or the genre text as written.
+    // `@thesis` carries its degree in `type`. The genre text goes in as
+    // written: biblatex prints unknown text verbatim, so "Dissertação
+    // (Mestrado em Educação)" reaches the reference intact, while a
+    // localization key like `mathesis` would replace the user's wording and
+    // come back from importers as the literal genre "mathesis".
     if bib_type == "thesis" {
-        let genre = item["genre"].as_str();
-        let degree = match thesis_kind(genre) {
-            Some(ThesisKind::Masters) => Some("mathesis".to_string()),
-            Some(ThesisKind::Doctoral) => Some("phdthesis".to_string()),
-            None => genre.map(escape_bibtex),
-        };
-        if let Some(degree) = degree {
-            fields.push(format!("  type = {{{degree}}}"));
-        }
+        push_escaped(&mut fields, "type", text_field(item, "genre"));
     }
 
     // Identifiers

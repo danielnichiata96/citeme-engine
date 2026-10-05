@@ -520,6 +520,33 @@ fn exports_read_raw_iso_dates() {
 }
 
 #[test]
+fn ambiguous_raw_dates_are_not_read_by_position() {
+    // "05/03/2019" is day/month or month/day — never year 5.
+    for raw in ["05/03/2019", "March 2019", "5"] {
+        let item = json!({"type": "book", "id": "r", "title": "T", "issued": {"raw": raw}});
+        let bib = csl_json_to_bibtex(&item);
+        assert!(!bib.contains("year ="), "{raw}: {bib}");
+    }
+    let item =
+        json!({"type": "book", "id": "r", "title": "T", "issued": {"raw": "2018-07-15T10:00:00Z"}});
+    let blx = csl_json_array_to_biblatex(std::slice::from_ref(&item));
+    assert!(blx.contains("date = {2018-07-15}"), "{blx}");
+}
+
+#[test]
+fn biblatex_thesis_type_round_trips_as_written() {
+    // `type = {phdthesis}` came back from our own parser as the genre
+    // "phdthesis" ("[Phdthesis]" in APA) and threw away the original text.
+    for genre in ["PhD thesis", "Dissertação (Mestrado em Educação)"] {
+        let item = json!({"type": "thesis", "id": "t", "title": "T", "genre": genre,
+            "publisher": "U", "issued": {"date-parts": [[2020]]}});
+        let blx = csl_json_array_to_biblatex(std::slice::from_ref(&item));
+        let back = parse_bibtex(&blx, &ParseOptions::default());
+        assert_eq!(back.entries[0]["genre"], genre, "{blx}");
+    }
+}
+
+#[test]
 fn out_of_range_date_parts_are_dropped_not_emitted() {
     let item = json!({"type": "book", "id": "d", "title": "T", "issued": {"date-parts": [[2024, 13, 40]]}});
     let ris = csl_json_to_ris(&item);
@@ -557,15 +584,14 @@ fn thesis_and_report_export_their_institution_field() {
 
     let blx = csl_json_array_to_biblatex(&[thesis.clone(), report]);
     assert!(blx.contains("institution = {Univ X}"), "{blx}");
-    assert!(blx.contains("type = {mathesis}"), "{blx}");
+    assert!(
+        blx.contains("type = {Dissertação (Mestrado em Educação)}"),
+        "{blx}"
+    );
     assert!(blx.contains("institution = {NASA}"), "{blx}");
     assert!(!blx.contains("publisher"), "{blx}");
 
     // Still the publisher after a round trip through our own parser.
     let back = parse_bibtex(&csl_json_to_bibtex(&thesis), &ParseOptions::default());
     assert_eq!(back.entries[0]["publisher"], "Univ X");
-
-    let phd = json!({"type": "thesis", "id": "p", "title": "P", "genre": "Tese (Doutorado)"});
-    let blx = csl_json_array_to_biblatex(&[phd]);
-    assert!(blx.contains("type = {phdthesis}"), "{blx}");
 }

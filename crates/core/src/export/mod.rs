@@ -38,12 +38,7 @@ pub(crate) fn date_parts(item: &Value, key: &str) -> Option<DateParts> {
     let date = &item[key];
     let numbers: Vec<Option<i64>> = match date["date-parts"].get(0).and_then(Value::as_array) {
         Some(parts) => parts.iter().map(date_part_number).collect(),
-        None => date["raw"]
-            .as_str()?
-            .trim()
-            .split(['-', '/'])
-            .map(|p| p.trim().parse().ok())
-            .collect(),
+        None => raw_iso_parts(date["raw"].as_str()?)?,
     };
     let year = (*numbers.first()?)?;
     let month = numbers
@@ -59,6 +54,24 @@ pub(crate) fn date_parts(item: &Value, key: &str) -> Option<DateParts> {
             .filter(|d| (1..=31).contains(d))
     });
     Some(DateParts { year, month, day })
+}
+
+/// `raw` is free text; only a year-first ISO form ("2018", "2018-07",
+/// "2018-07-15T10:00:00Z") is read. "05/03/2019" is day/month or month/day,
+/// and reading it by position made the year 5.
+fn raw_iso_parts(raw: &str) -> Option<Vec<Option<i64>>> {
+    let date = raw.trim().split(['T', ' ']).next()?;
+    let mut parts = date.split('-');
+    let year = parts.next()?;
+    if year.len() != 4 || !year.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(
+        std::iter::once(year)
+            .chain(parts)
+            .map(|p| p.parse().ok())
+            .collect(),
+    )
 }
 
 fn date_part_number(part: &Value) -> Option<i64> {
