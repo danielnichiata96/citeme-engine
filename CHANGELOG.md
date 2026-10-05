@@ -5,6 +5,56 @@ All notable changes to `citeme-engine` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [Unreleased]
+
+An import/export correctness pass. Every item below silently produced
+wrong data — no error, nothing for a consumer fallback to catch — and each
+is pinned by a test that failed before the fix.
+
+### Fixed
+- **MEDLINE: wrapped lines.** PubMed wraps at ~80 columns with a six-space
+  indent. A wrapped line opening with "HIV-1", "IL-6" or "SARS-CoV-2" read
+  as a tag and cut the title short; a wrapped journal title replaced the
+  journal with its last fragment (PNAS imported as "America").
+- **MEDLINE: pre-2002 records** carry only `AU` ("Smith JA") and imported
+  with no authors; `AU` is now read when `FAU` is absent, and `CN`
+  (corporate author) is kept in order. A second `PMID` starts a new record
+  instead of merging two records whose blank separator was lost. `DP` keeps
+  the day and the first month of a range.
+- **RIS: `Y2` is the access date** (event date for `CONF`), never the
+  publication date — it overwrote `DA`, so a 2019 article imported as 2024.
+- **RIS:** a lone `SP` (article numbers, whole ranges) keeps its page; full
+  journal titles (`T2`/`JF`/`BT`) beat abbreviations (`JO`/`JA`/`J2`, now
+  `container-title-short`) regardless of order; a missing `ER` no longer
+  discards the record; ISO dates and full `PY` dates are read; `ED`/`A2`
+  become editors and "Last, First, Jr." keeps its suffix; the truncation
+  path no longer leaks internal `_sp`/`_ep` keys.
+- **BibTeX import: duplicate keys** each merge with their own biblatex
+  entry. The second entry of a duplicated key took the first one's type,
+  journal and keywords.
+- **BibTeX/BibLaTeX export escapes every field.** Volume, number, pages,
+  ISBN/ISSN, PMID/PMCID, chapter and eprint were written raw, so a `}` in
+  any of them lost the whole entry on re-import (and `2_suppl` broke
+  LaTeX). Verbatim fields (`doi`, `url`, `eprint`) percent-encode braces.
+- **All exporters read CSL "string or number" values**: numeric
+  `volume`/`issue`/`page`/`edition`/`PMID`, numeric-string date-parts
+  (`[["2019", "5"]]`, as Zotero and citation-js emit) and `raw` ISO dates
+  were dropped. Out-of-range months/days are no longer written.
+- **Theses and reports export their institution** as BibTeX
+  `school`/`institution` and BibLaTeX `institution`, plus the BibLaTeX
+  thesis `type`; standard styles ignore `publisher` there.
+- **`formatBatch` keeps numeric ids.** They were replaced per position, so
+  one item cited twice became "2024a"/"2024b".
+
+### Changed
+- **BibTeX "von" parts import as `non-dropping-particle`**, matching BibTeX
+  semantics, citation-js and CiteMe's own name parser. APA now renders
+  "van der Berg, J. (2000)" / "(van der Berg, 2000)" instead of
+  "Berg, J. van der. (2000)" / "(Berg, 2000)"; the style's
+  `demote-non-dropping-particle` decides display. A particle-only name
+  ("von Neumann") is kept as a person instead of a literal without its
+  "von".
+
 ## [0.3.8] — 2026-07-25
 
 Follow-up to the 0.3.7 export audit: that release escaped hostile *field*
