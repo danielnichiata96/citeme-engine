@@ -1,3 +1,4 @@
+use super::{date_parts, text_field};
 use serde_json::Value;
 
 /// CSL-JSON type → RIS TY tag mapping.
@@ -114,30 +115,25 @@ pub fn csl_json_to_ris(item: &Value) -> String {
     }
 
     // Date — RIS spec: PY for year, DA for full date (YYYY/MM/DD/ format)
-    if let Some(dp) = item["issued"]["date-parts"].as_array() {
-        if let Some(parts) = dp.first().and_then(|p| p.as_array()) {
-            let year = parts.first().and_then(|y| y.as_i64()).unwrap_or(0);
-            if year > 0 {
-                lines.push(format!("PY  - {year}///"));
-                let day = parts.get(2).and_then(|d| d.as_i64());
-                if let Some(m) = parts.get(1).and_then(|m| m.as_i64()) {
-                    let d_str = day.map(|d| format!("{d:02}")).unwrap_or_default();
-                    lines.push(format!("DA  - {year}/{m:02}/{d_str}/"));
-                }
-            }
+    if let Some(date) = date_parts(item, "issued").filter(|d| d.year > 0) {
+        let year = date.year;
+        lines.push(format!("PY  - {year}///"));
+        if let Some(m) = date.month {
+            let d_str = date.day.map(|d| format!("{d:02}")).unwrap_or_default();
+            lines.push(format!("DA  - {year}/{m:02}/{d_str}/"));
         }
     }
 
     // Volume, issue
-    if let Some(v) = item["volume"].as_str() {
-        push_field(&mut lines, "VL", v);
+    if let Some(v) = text_field(item, "volume") {
+        push_field(&mut lines, "VL", &v);
     }
-    if let Some(v) = item["issue"].as_str() {
-        push_field(&mut lines, "IS", v);
+    if let Some(v) = text_field(item, "issue") {
+        push_field(&mut lines, "IS", &v);
     }
 
     // Pages: split "100-115" into SP/EP
-    if let Some(pages) = item["page"].as_str() {
+    if let Some(pages) = text_field(item, "page") {
         let parts: Vec<&str> = pages.splitn(2, ['-', '–']).collect();
         if let Some(sp) = parts.first() {
             push_field(&mut lines, "SP", sp);

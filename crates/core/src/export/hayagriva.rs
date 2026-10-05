@@ -1,3 +1,4 @@
+use super::{date_parts, text_field};
 use serde_json::Value;
 
 /// CSL-JSON type → Hayagriva entry type mapping.
@@ -195,20 +196,14 @@ pub(crate) fn csl_json_to_hayagriva_with_key(item: &Value, key: &str) -> String 
     }
 
     // Date
-    if let Some(dp) = item["issued"]["date-parts"].as_array() {
-        if let Some(parts) = dp.first().and_then(|p| p.as_array()) {
-            let year = parts.first().and_then(|y| y.as_i64()).unwrap_or(0);
-            if year > 0 {
-                let month = parts.get(1).and_then(|m| m.as_i64());
-                let day = parts.get(2).and_then(|d| d.as_i64());
-                let date_str = match (month, day) {
-                    (Some(m), Some(d)) => format!("{year}-{m:02}-{d:02}"),
-                    (Some(m), None) => format!("{year}-{m:02}"),
-                    _ => format!("{year}"),
-                };
-                lines.push(format!("  date: {date_str}"));
-            }
-        }
+    if let Some(date) = date_parts(item, "issued").filter(|d| d.year > 0) {
+        let year = date.year;
+        let date_str = match (date.month, date.day) {
+            (Some(m), Some(d)) => format!("{year}-{m:02}-{d:02}"),
+            (Some(m), None) => format!("{year}-{m:02}"),
+            _ => format!("{year}"),
+        };
+        lines.push(format!("  date: {date_str}"));
     }
 
     // Parent (container/journal)
@@ -226,17 +221,17 @@ pub(crate) fn csl_json_to_hayagriva_with_key(item: &Value, key: &str) -> String 
     }
 
     // Biblio fields
-    if let Some(v) = item["volume"].as_str() {
-        lines.push(format!("  volume: {}", yaml_str(v)));
+    if let Some(v) = text_field(item, "volume") {
+        lines.push(format!("  volume: {}", yaml_str(&v)));
     }
-    if let Some(v) = item["issue"].as_str() {
-        lines.push(format!("  issue: {}", yaml_str(v)));
+    if let Some(v) = text_field(item, "issue") {
+        lines.push(format!("  issue: {}", yaml_str(&v)));
     }
-    if let Some(v) = item["page"].as_str() {
-        lines.push(format!("  page-range: {}", yaml_str(v)));
+    if let Some(v) = text_field(item, "page") {
+        lines.push(format!("  page-range: {}", yaml_str(&v)));
     }
-    if let Some(v) = item["edition"].as_str() {
-        lines.push(format!("  edition: {}", yaml_str(v)));
+    if let Some(v) = text_field(item, "edition") {
+        lines.push(format!("  edition: {}", yaml_str(&v)));
     }
 
     // Publisher
@@ -259,11 +254,11 @@ pub(crate) fn csl_json_to_hayagriva_with_key(item: &Value, key: &str) -> String 
     if let Some(v) = item["ISSN"].as_str() {
         serial_fields.push(format!("    issn: {}", yaml_str(v)));
     }
-    if let Some(v) = item["PMID"].as_str() {
-        serial_fields.push(format!("    pmid: {}", yaml_str(v)));
+    if let Some(v) = text_field(item, "PMID") {
+        serial_fields.push(format!("    pmid: {}", yaml_str(&v)));
     }
-    if let Some(v) = item["PMCID"].as_str() {
-        serial_fields.push(format!("    pmcid: {}", yaml_str(v)));
+    if let Some(v) = text_field(item, "PMCID") {
+        serial_fields.push(format!("    pmcid: {}", yaml_str(&v)));
     }
     if !serial_fields.is_empty() {
         lines.push("  serial-number:".to_string());
@@ -281,8 +276,8 @@ pub(crate) fn csl_json_to_hayagriva_with_key(item: &Value, key: &str) -> String 
     }
 
     // Chapter
-    if let Some(v) = item["chapter-number"].as_str() {
-        lines.push(format!("  chapter: {}", yaml_str(v)));
+    if let Some(v) = text_field(item, "chapter-number") {
+        lines.push(format!("  chapter: {}", yaml_str(&v)));
     }
 
     // Language — validated, never quoted-junk (see is_language_tag)

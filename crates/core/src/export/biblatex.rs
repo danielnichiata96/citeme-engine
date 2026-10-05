@@ -1,6 +1,8 @@
 use super::bibtex::{
-    csl_keyword_as_string, disambiguate_keys, escape_bibtex, format_authors, resolve_key,
+    csl_keyword_as_string, disambiguate_keys, escape_bibtex, format_authors, push_eprint,
+    push_escaped, push_verbatim, resolve_key, thesis_kind, ThesisKind,
 };
+use super::{date_parts, text_field};
 use serde_json::Value;
 
 /// CSL-JSON type → BibLaTeX entry type mapping.
@@ -8,9 +10,8 @@ use serde_json::Value;
 /// Key differences vs. classic BibTeX:
 /// - `@online` is a valid BibLaTeX entry type for `webpage` / `post-weblog`.
 /// - `@report` replaces `@techreport` (still accepted via alias).
-/// - `@thesis` unifies `phdthesis` and `mastersthesis`. We emit it without a
-///   `type` distinguisher; masters vs. PhD disambiguation is out of scope for
-///   0.3.0 and can be added later via `item["genre"]`.
+/// - `@thesis` unifies `phdthesis` and `mastersthesis`; the degree goes in
+///   the `type` field, read from `item["genre"]`.
 fn csl_type_to_biblatex(csl_type: &str) -> &'static str {
     match csl_type {
         "article-journal" | "article-magazine" | "article-newspaper" | "article" => "article",
@@ -32,22 +33,12 @@ fn csl_type_to_biblatex(csl_type: &str) -> &'static str {
 /// BibLaTeX ≥ v3.5 canonicalized on `date` (ISO 8601); `year`/`month`/`day`
 /// are now deprecated aliases. Biber requires ISO form.
 fn format_biblatex_date(item: &Value) -> Option<String> {
-    let parts = item["issued"]["date-parts"]
-        .as_array()?
-        .first()?
-        .as_array()?;
-    let year = parts.first()?.as_i64()?;
-    // Drop out-of-range month/day rather than emitting malformed EDTF like
-    // `2024-999`. Biber rejects those; fall back to lower precision.
-    let month = parts
-        .get(1)
-        .and_then(|m| m.as_i64())
-        .filter(|m| (1..=12).contains(m));
-    let day = parts
-        .get(2)
-        .and_then(|d| d.as_i64())
-        .filter(|d| (1..=31).contains(d));
-    Some(match (month, day) {
+    // `date_parts` drops out-of-range month/day rather than letting malformed
+    // EDTF like `2024-999` through. Biber rejects those; fall back to lower
+    // precision.
+    let date = date_parts(item, "issued")?;
+    let year = date.year;
+    Some(match (date.month, date.day) {
         (Some(m), Some(d)) => format!("{year:04}-{m:02}-{d:02}"),
         (Some(m), None) => format!("{year:04}-{m:02}"),
         _ => format!("{year:04}"),
@@ -100,95 +91,67 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
         fields.push(format!("  date = {{{d}}}"));
     }
 
-    // Volume / issue / pages
-    if let Some(v) = item["volume"].as_str() {
-        fields.push(format!("  volume = {{{v}}}"));
-    }
-    if let Some(v) = item["issue"].as_str() {
-        fields.push(format!("  number = {{{v}}}"));
-    }
-    if let Some(v) = item["page"].as_str() {
-        fields.push(format!("  pages = {{{v}}}"));
-    }
+    // Volume / issue / pages — escaped like every other value (see bibtex.rs)
+    push_escaped(&mut fields, "volume", text_field(item, "volume"));
+    push_escaped(&mut fields, "number", text_field(item, "issue"));
+    push_escaped(&mut fields, "pages", text_field(item, "page"));
 
-    // Publisher / location (canonical; `address` is a legacy alias in BibLaTeX)
-    if let Some(v) = item["publisher"].as_str() {
-        fields.push(format!("  publisher = {{{}}}", escape_bibtex(v)));
-    }
-    if let Some(v) = item["publisher-place"].as_str() {
-        fields.push(format!("  location = {{{}}}", escape_bibtex(v)));
+    // Publisher / location (canonical; `address` is a legacy alias in
+    // BibLaTeX). Theses and reports name their institution in `institution`;
+    // standard styles don't print `publisher` for them.
+    let publisher_field = match bib_type {
+        "thesis" | "report" => "institution",
+        _ => "publisher",
+    };
+    push_escaped(&mut fields, publisher_field, text_field(item, "publisher"));
+    push_escaped(&mut fields, "location", text_field(item, "publisher-place"));
+
+    // `@thesis` wants its degree in `type`: the localization keys biblatex
+    // knows, or the genre text as written.
+    if bib_type == "thesis" {
+        let genre = item["genre"].as_str();
+        let degree = match thesis_kind(genre) {
+            Some(ThesisKind::Masters) => Some("mathesis".to_string()),
+            Some(ThesisKind::Doctoral) => Some("phdthesis".to_string()),
+            None => genre.map(escape_bibtex),
+        };
+        if let Some(degree) = degree {
+            fields.push(format!("  type = {{{degree}}}"));
+        }
     }
 
     // Identifiers
-    if let Some(v) = item["DOI"].as_str() {
-        fields.push(format!("  doi = {{{v}}}"));
-    }
-    if let Some(v) = item["URL"].as_str() {
-        fields.push(format!("  url = {{{v}}}"));
-    }
-    if let Some(v) = item["ISBN"].as_str() {
-        fields.push(format!("  isbn = {{{v}}}"));
-    }
-    if let Some(v) = item["ISSN"].as_str() {
-        fields.push(format!("  issn = {{{v}}}"));
-    }
+    push_verbatim(&mut fields, "doi", text_field(item, "DOI"));
+    push_verbatim(&mut fields, "url", text_field(item, "URL"));
+    push_escaped(&mut fields, "isbn", text_field(item, "ISBN"));
+    push_escaped(&mut fields, "issn", text_field(item, "ISSN"));
 
     // Abstract / keywords / note
-    if let Some(v) = item["abstract"].as_str() {
-        fields.push(format!("  abstract = {{{}}}", escape_bibtex(v)));
-    }
-    if let Some(v) = csl_keyword_as_string(item) {
-        fields.push(format!("  keywords = {{{}}}", escape_bibtex(&v)));
-    }
-    if let Some(v) = item["note"].as_str() {
-        fields.push(format!("  note = {{{}}}", escape_bibtex(v)));
-    }
+    push_escaped(&mut fields, "abstract", text_field(item, "abstract"));
+    push_escaped(&mut fields, "keywords", csl_keyword_as_string(item));
+    push_escaped(&mut fields, "note", text_field(item, "note"));
 
-    // Series
-    if let Some(v) = item["collection-title"].as_str() {
-        fields.push(format!("  series = {{{}}}", escape_bibtex(v)));
-    }
-
-    // Chapter
-    if let Some(v) = item["chapter-number"].as_str() {
-        fields.push(format!("  chapter = {{{v}}}"));
-    } else if let Some(n) = item["chapter-number"].as_i64() {
-        fields.push(format!("  chapter = {{{n}}}"));
-    }
+    // Series / chapter
+    push_escaped(&mut fields, "series", text_field(item, "collection-title"));
+    push_escaped(&mut fields, "chapter", text_field(item, "chapter-number"));
 
     // PMID / PMCID — emit both as direct fields (top-level in CSL 1.0.1+) AND
     // as eprint/eprinttype when no `custom.eprint` is present, since the most
     // common BibLaTeX styles consult `eprint` for PubMed/arXiv linking.
-    if let Some(v) = item["PMID"].as_str() {
-        fields.push(format!("  pmid = {{{v}}}"));
-    }
-    if let Some(v) = item["PMCID"].as_str() {
-        fields.push(format!("  pmcid = {{{v}}}"));
-    }
+    let pmid = text_field(item, "PMID");
+    push_escaped(&mut fields, "pmid", pmid.clone());
+    push_escaped(&mut fields, "pmcid", text_field(item, "PMCID"));
 
     // Eprint (from CSL custom.eprint). `eprintclass` is the BibLaTeX canonical
     // (INSPIRE-HEP's `archivePrefix`/`primaryClass` is a separate convention).
-    if let Some(eprint) = item["custom"]["eprint"]["id"].as_str() {
-        fields.push(format!("  eprint = {{{eprint}}}"));
-        if let Some(t) = item["custom"]["eprint"]["type"].as_str() {
-            fields.push(format!("  eprinttype = {{{t}}}"));
-        }
-        if let Some(c) = item["custom"]["eprint"]["class"].as_str() {
-            fields.push(format!("  eprintclass = {{{c}}}"));
-        }
-    } else if item["PMID"].as_str().is_some() {
+    if !push_eprint(&mut fields, item) && pmid.is_some() {
         // No custom.eprint but we have PMID — emit the biblatex-idiomatic form
         // so BibLaTeX styles that link PubMed via eprint still work.
-        if let Some(v) = item["PMID"].as_str() {
-            fields.push(format!("  eprint = {{{v}}}"));
-            fields.push("  eprinttype = {pubmed}".to_string());
-        }
+        push_verbatim(&mut fields, "eprint", pmid);
+        fields.push("  eprinttype = {pubmed}".to_string());
     }
 
-    // Edition
-    if let Some(v) = item["edition"].as_str() {
-        fields.push(format!("  edition = {{{}}}", escape_bibtex(v)));
-    }
+    push_escaped(&mut fields, "edition", text_field(item, "edition"));
 
     format!("@{}{{{},\n{}\n}}", bib_type, key, fields.join(",\n"))
 }

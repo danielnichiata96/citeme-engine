@@ -397,3 +397,175 @@ fn hayagriva_keys_are_unique_and_non_empty() {
         "every item needs its own key:\n{yaml}"
     );
 }
+
+// ── Every field is escaped ───────────────────────────────────────────
+//
+// 0.3.7/0.3.8 escaped titles and names but interpolated volume, number,
+// pages, identifiers and eprint fields raw ("numeric/simple values"). A `}`
+// in any of them closed the field early: the entry re-imported with zero
+// entries and one error — the whole reference lost.
+
+fn hostile_field_item() -> Value {
+    json!({
+        "type": "article-journal",
+        "id": "f1",
+        "title": "Real Title",
+        "volume": "1},\n  title = {pwned",
+        "issue": "2}",
+        "page": "3{",
+        "DOI": "10.1000/x}y",
+        "URL": "https://example.org/a{b}\\c",
+        "ISBN": "978}",
+        "ISSN": "1234-567{",
+        "PMID": "1}",
+        "PMCID": "PMC1}",
+        "chapter-number": "4}",
+        "custom": {"eprint": {"id": "2301.1}", "type": "arxiv}", "class": "cs}"}},
+        "issued": {"date-parts": [[2024]]}
+    })
+}
+
+#[test]
+fn bibtex_and_biblatex_escape_every_field() {
+    let items = vec![hostile_field_item()];
+    for (name, bib) in [
+        ("bibtex", csl_json_array_to_bibtex(&items)),
+        ("biblatex", csl_json_array_to_biblatex(&items)),
+    ] {
+        let res = parse_bibtex(&bib, &ParseOptions::default());
+        assert_eq!(
+            (res.entries.len(), res.errors.len()),
+            (1, 0),
+            "{name} must re-import as one clean entry:\n{bib}"
+        );
+        assert_eq!(res.entries[0]["title"], "Real Title", "{name}:\n{bib}");
+        assert!(
+            !bib.contains("title = {pwned"),
+            "{name}: volume must not open a field:\n{bib}"
+        );
+        assert!(
+            bib.contains("doi = {10.1000/x%7Dy}"),
+            "{name}: verbatim braces are percent-encoded:\n{bib}"
+        );
+    }
+}
+
+// ── String-or-number CSL variables ───────────────────────────────────
+//
+// CSL-JSON allows numbers for volume/issue/page/edition and numeric strings
+// in date-parts (`[["2019", "5"]]`, which Zotero and citation-js emit).
+// Reading them with as_str()/as_i64() dropped them from every exporter.
+
+fn numeric_item() -> Value {
+    json!({
+        "type": "article-journal",
+        "title": "T",
+        "author": [{"family": "Smith", "given": "J"}],
+        "volume": 42,
+        "issue": 3,
+        "page": 7,
+        "edition": 2,
+        "PMID": 12345678,
+        "issued": {"date-parts": [["2019", "5", "3"]]}
+    })
+}
+
+#[test]
+fn exports_keep_numeric_fields_and_string_date_parts() {
+    let item = numeric_item();
+
+    let bib = csl_json_to_bibtex(&item);
+    for want in [
+        "@article{Smith2019,",
+        "volume = {42}",
+        "number = {3}",
+        "pages = {7}",
+        "edition = {2}",
+        "pmid = {12345678}",
+        "year = {2019}",
+        "month = may",
+    ] {
+        assert!(bib.contains(want), "bibtex missing `{want}`:\n{bib}");
+    }
+
+    let blx = csl_json_array_to_biblatex(std::slice::from_ref(&item));
+    for want in ["volume = {42}", "date = {2019-05-03}"] {
+        assert!(blx.contains(want), "biblatex missing `{want}`:\n{blx}");
+    }
+
+    let ris = csl_json_to_ris(&item);
+    for want in [
+        "VL  - 42",
+        "IS  - 3",
+        "SP  - 7",
+        "PY  - 2019",
+        "DA  - 2019/05/03/",
+    ] {
+        assert!(ris.contains(want), "ris missing `{want}`:\n{ris}");
+    }
+
+    let yaml = csl_json_array_to_hayagriva(std::slice::from_ref(&item));
+    for want in ["volume: \"42\"", "date: 2019-05-03"] {
+        assert!(yaml.contains(want), "hayagriva missing `{want}`:\n{yaml}");
+    }
+    hayagriva::io::from_yaml_str(&yaml).expect("hayagriva YAML must load");
+}
+
+#[test]
+fn exports_read_raw_iso_dates() {
+    let item = json!({"type": "book", "id": "r", "title": "T", "issued": {"raw": "2018-07"}});
+    let bib = csl_json_to_bibtex(&item);
+    assert!(bib.contains("year = {2018}"), "{bib}");
+    assert!(bib.contains("month = jul"), "{bib}");
+}
+
+#[test]
+fn out_of_range_date_parts_are_dropped_not_emitted() {
+    let item = json!({"type": "book", "id": "d", "title": "T", "issued": {"date-parts": [[2024, 13, 40]]}});
+    let ris = csl_json_to_ris(&item);
+    assert!(
+        !ris.contains("DA  -"),
+        "month 13 must not reach RIS:\n{ris}"
+    );
+    let yaml = csl_json_array_to_hayagriva(std::slice::from_ref(&item));
+    assert!(
+        yaml.contains("date: 2024\n") || yaml.ends_with("date: 2024"),
+        "{yaml}"
+    );
+    hayagriva::io::from_yaml_str(&yaml).expect("hayagriva YAML must load");
+}
+
+// ── Thesis / report institutions ─────────────────────────────────────
+//
+// BibTeX styles read `school` for theses and `institution` for tech reports
+// and ignore `publisher` there; biblatex reads `institution` for both and a
+// `type` for theses. Exporting `publisher` dropped the university.
+
+#[test]
+fn thesis_and_report_export_their_institution_field() {
+    let thesis = json!({"type": "thesis", "id": "t", "title": "T", "publisher": "Univ X",
+        "genre": "Dissertação (Mestrado em Educação)", "issued": {"date-parts": [[2020]]}});
+    let report = json!({"type": "report", "id": "r", "title": "R", "publisher": "NASA",
+        "issued": {"date-parts": [[2020]]}});
+
+    let bib = csl_json_to_bibtex(&thesis);
+    assert!(bib.starts_with("@mastersthesis{t,"), "{bib}");
+    assert!(bib.contains("school = {Univ X}"), "{bib}");
+    assert!(!bib.contains("publisher"), "{bib}");
+    let bib = csl_json_to_bibtex(&report);
+    assert!(bib.contains("institution = {NASA}"), "{bib}");
+
+    let blx = csl_json_array_to_biblatex(&[thesis.clone(), report]);
+    assert!(blx.contains("institution = {Univ X}"), "{blx}");
+    assert!(blx.contains("type = {mathesis}"), "{blx}");
+    assert!(blx.contains("institution = {NASA}"), "{blx}");
+    assert!(!blx.contains("publisher"), "{blx}");
+
+    // Still the publisher after a round trip through our own parser.
+    let back = parse_bibtex(&csl_json_to_bibtex(&thesis), &ParseOptions::default());
+    assert_eq!(back.entries[0]["publisher"], "Univ X");
+
+    let phd = json!({"type": "thesis", "id": "p", "title": "P", "genre": "Tese (Doutorado)"});
+    let blx = csl_json_array_to_biblatex(&[phd]);
+    assert!(blx.contains("type = {phdthesis}"), "{blx}");
+}

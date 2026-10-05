@@ -393,13 +393,8 @@ impl CitationEngine {
             .or(v["container-title"].as_str())
             .unwrap_or("Unknown");
 
-        let year = v["issued"]["date-parts"]
-            .as_array()
-            .and_then(|dp| dp.first())
-            .and_then(|parts| parts.as_array())
-            .and_then(|parts| parts.first())
-            .and_then(|y| y.as_i64())
-            .map(|y| y.to_string())
+        let year = crate::export::date_parts(&v, "issued")
+            .map(|d| d.year.to_string())
             .unwrap_or_else(|| "n.d.".into());
 
         let title = v["title"].as_str().unwrap_or("Untitled");

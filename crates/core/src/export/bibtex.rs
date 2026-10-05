@@ -1,4 +1,36 @@
+use super::{date_parts, text_field};
 use serde_json::Value;
+
+/// Degree level of a thesis, read from its CSL `genre`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ThesisKind {
+    Masters,
+    Doctoral,
+}
+
+/// Classify a thesis genre ("PhD thesis", "Dissertação (Mestrado)", "Tese
+/// (Doutorado)", …). Master's markers are checked first: in Portuguese a
+/// *dissertação* is the master's work and a *tese* the doctoral one.
+pub(crate) fn thesis_kind(genre: Option<&str>) -> Option<ThesisKind> {
+    let lower = genre?.to_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|n| lower.contains(n));
+    if has(&[
+        "master",
+        "mestrado",
+        "m.s.",
+        "msc",
+        "m.sc",
+        "maestr",
+        "dissertação",
+        "dissertacao",
+    ]) {
+        Some(ThesisKind::Masters)
+    } else if has(&["phd", "ph.d", "doctor", "doutorado", "doctorat", "tese"]) {
+        Some(ThesisKind::Doctoral)
+    } else {
+        None
+    }
+}
 
 /// CSL-JSON type → BibTeX entry type mapping.
 /// For thesis, checks genre to distinguish phdthesis from mastersthesis.
@@ -8,16 +40,10 @@ fn csl_type_to_bibtex_with_genre(csl_type: &str, genre: Option<&str>) -> &'stati
         "book" => "book",
         "chapter" => "incollection",
         "paper-conference" => "inproceedings",
-        "thesis" => {
-            if let Some(g) = genre {
-                let lower = g.to_lowercase();
-                if lower.contains("master") || lower.contains("mestrado") || lower.contains("m.s.")
-                {
-                    return "mastersthesis";
-                }
-            }
-            "phdthesis"
-        }
+        "thesis" => match thesis_kind(genre) {
+            Some(ThesisKind::Masters) => "mastersthesis",
+            _ => "phdthesis",
+        },
         "report" => "techreport",
         "webpage" | "post-weblog" => "misc",
         "dataset" => "misc",
@@ -35,13 +61,8 @@ pub(crate) fn generate_key(item: &Value) -> String {
         .and_then(|a| a["family"].as_str().or(a["literal"].as_str()))
         .unwrap_or("unknown");
 
-    let year = item["issued"]["date-parts"]
-        .as_array()
-        .and_then(|dp| dp.first())
-        .and_then(|parts| parts.as_array())
-        .and_then(|parts| parts.first())
-        .and_then(|y| y.as_i64())
-        .map(|y| y.to_string())
+    let year = date_parts(item, "issued")
+        .map(|d| d.year.to_string())
         .unwrap_or_else(|| "nd".into());
 
     // Clean author name: remove spaces, take first word
@@ -162,6 +183,25 @@ pub(crate) fn escape_bibtex(s: &str) -> String {
     out
 }
 
+/// Make a value safe for a verbatim field (`doi`, `url`, `eprint`).
+///
+/// Verbatim fields are not TeX-escaped — `\_` in a URL would be a literal
+/// backslash — but their braces must still balance or the field closes
+/// early. Braces and backslashes are percent-encoded instead, which URL and
+/// DOI resolvers read back to the same characters.
+pub(crate) fn escape_verbatim(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '{' => out.push_str("%7B"),
+            '}' => out.push_str("%7D"),
+            '\\' => out.push_str("%5C"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Sanitize a raw id into a legal BibTeX cite key. Commas, braces, parens,
 /// whitespace, `=`, `\`, `#`, `%`, `"` and `~` all break entry syntax — they
 /// become `_`. Alphanumerics plus `- _ : . / +` pass through (covers
@@ -238,111 +278,88 @@ pub(crate) fn csl_json_to_bibtex_with_key(item: &Value, key: &str) -> String {
 
     // Year + month. BibTeX tradition: `month = mar` (3-letter lowercase macro,
     // no braces). Never numeric. Day is not a canonical BibTeX field.
-    let date_parts = item["issued"]["date-parts"]
-        .as_array()
-        .and_then(|dp| dp.first())
-        .and_then(|parts| parts.as_array());
-    if let Some(parts) = date_parts {
-        if let Some(year) = parts.first().and_then(|y| y.as_i64()) {
-            fields.push(format!("  year = {{{year}}}"));
-        }
-        if let Some(m) = parts.get(1).and_then(|m| m.as_i64()) {
+    if let Some(date) = date_parts(item, "issued") {
+        fields.push(format!("  year = {{{}}}", date.year));
+        if let Some(m) = date.month {
             const MONTHS: [&str; 12] = [
                 "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
             ];
-            if (1..=12).contains(&m) {
-                fields.push(format!("  month = {}", MONTHS[(m - 1) as usize]));
-            }
+            fields.push(format!("  month = {}", MONTHS[(m - 1) as usize]));
         }
     }
 
-    // Volume, issue, pages (no escaping needed — numeric/simple values)
-    if let Some(v) = item["volume"].as_str() {
-        fields.push(format!("  volume = {{{v}}}"));
-    }
-    if let Some(v) = item["issue"].as_str() {
-        fields.push(format!("  number = {{{v}}}"));
-    }
-    if let Some(v) = item["page"].as_str() {
-        fields.push(format!("  pages = {{{v}}}"));
-    }
+    // Every remaining value is escaped too. Volume, pages and identifiers
+    // were once written raw as "simple values"; a `}` in any of them closed
+    // the field and the entry re-imported as nothing.
+    push_escaped(&mut fields, "volume", text_field(item, "volume"));
+    push_escaped(&mut fields, "number", text_field(item, "issue"));
+    push_escaped(&mut fields, "pages", text_field(item, "page"));
 
-    // Publisher (escape)
-    if let Some(v) = item["publisher"].as_str() {
-        fields.push(format!("  publisher = {{{}}}", escape_bibtex(v)));
-    }
-    if let Some(v) = item["publisher-place"].as_str() {
-        fields.push(format!("  address = {{{}}}", escape_bibtex(v)));
-    }
+    // Publisher. BibTeX styles read `school` for theses and `institution`
+    // for tech reports and ignore `publisher` there — the university was
+    // dropped from the formatted reference.
+    let publisher_field = match bib_type {
+        "phdthesis" | "mastersthesis" => "school",
+        "techreport" => "institution",
+        _ => "publisher",
+    };
+    push_escaped(&mut fields, publisher_field, text_field(item, "publisher"));
+    push_escaped(&mut fields, "address", text_field(item, "publisher-place"));
 
-    // Identifiers (no escaping — DOI/URL/ISBN are literal)
-    if let Some(v) = item["DOI"].as_str() {
-        fields.push(format!("  doi = {{{v}}}"));
-    }
-    if let Some(v) = item["URL"].as_str() {
-        fields.push(format!("  url = {{{v}}}"));
-    }
-    if let Some(v) = item["ISBN"].as_str() {
-        fields.push(format!("  isbn = {{{v}}}"));
-    }
-    if let Some(v) = item["ISSN"].as_str() {
-        fields.push(format!("  issn = {{{v}}}"));
-    }
+    // Identifiers
+    push_verbatim(&mut fields, "doi", text_field(item, "DOI"));
+    push_verbatim(&mut fields, "url", text_field(item, "URL"));
+    push_escaped(&mut fields, "isbn", text_field(item, "ISBN"));
+    push_escaped(&mut fields, "issn", text_field(item, "ISSN"));
 
-    // Abstract (escape)
-    if let Some(v) = item["abstract"].as_str() {
-        fields.push(format!("  abstract = {{{}}}", escape_bibtex(v)));
-    }
+    push_escaped(&mut fields, "abstract", text_field(item, "abstract"));
 
     // Keywords — CSL `keyword` (singular, string OR v1.0.2 array) → BibTeX
     // `keywords` (plural, comma-separated).
-    if let Some(v) = csl_keyword_as_string(item) {
-        fields.push(format!("  keywords = {{{}}}", escape_bibtex(&v)));
-    }
+    push_escaped(&mut fields, "keywords", csl_keyword_as_string(item));
 
-    // Note
-    if let Some(v) = item["note"].as_str() {
-        fields.push(format!("  note = {{{}}}", escape_bibtex(v)));
-    }
-
-    // Series
-    if let Some(v) = item["collection-title"].as_str() {
-        fields.push(format!("  series = {{{}}}", escape_bibtex(v)));
-    }
-
-    // Chapter number — CSL can be string or number
-    if let Some(v) = item["chapter-number"].as_str() {
-        fields.push(format!("  chapter = {{{v}}}"));
-    } else if let Some(n) = item["chapter-number"].as_i64() {
-        fields.push(format!("  chapter = {{{n}}}"));
-    }
+    push_escaped(&mut fields, "note", text_field(item, "note"));
+    push_escaped(&mut fields, "series", text_field(item, "collection-title"));
+    push_escaped(&mut fields, "chapter", text_field(item, "chapter-number"));
 
     // PMID / PMCID — non-standard BibTeX but widely accepted (JabRef, Zotero)
-    if let Some(v) = item["PMID"].as_str() {
-        fields.push(format!("  pmid = {{{v}}}"));
-    }
-    if let Some(v) = item["PMCID"].as_str() {
-        fields.push(format!("  pmcid = {{{v}}}"));
-    }
+    push_escaped(&mut fields, "pmid", text_field(item, "PMID"));
+    push_escaped(&mut fields, "pmcid", text_field(item, "PMCID"));
 
     // Eprint (from CSL custom.eprint) — common BibLaTeX-ism but accepted by
     // most BibTeX tooling, and losing it on export would defeat roundtrip.
-    if let Some(eprint) = item["custom"]["eprint"]["id"].as_str() {
-        fields.push(format!("  eprint = {{{eprint}}}"));
-        if let Some(t) = item["custom"]["eprint"]["type"].as_str() {
-            fields.push(format!("  eprinttype = {{{t}}}"));
-        }
-        if let Some(c) = item["custom"]["eprint"]["class"].as_str() {
-            fields.push(format!("  eprintclass = {{{c}}}"));
-        }
-    }
+    push_eprint(&mut fields, item);
 
-    // Edition
-    if let Some(v) = item["edition"].as_str() {
-        fields.push(format!("  edition = {{{}}}", escape_bibtex(v)));
-    }
+    push_escaped(&mut fields, "edition", text_field(item, "edition"));
 
     format!("@{}{{{},\n{}\n}}", bib_type, key, fields.join(",\n"))
+}
+
+/// Push `name = {value}` with the value TeX-escaped.
+pub(crate) fn push_escaped(fields: &mut Vec<String>, name: &str, value: Option<String>) {
+    if let Some(v) = value {
+        fields.push(format!("  {name} = {{{}}}", escape_bibtex(&v)));
+    }
+}
+
+/// Push `name = {value}` for a verbatim field (see `escape_verbatim`).
+pub(crate) fn push_verbatim(fields: &mut Vec<String>, name: &str, value: Option<String>) {
+    if let Some(v) = value {
+        fields.push(format!("  {name} = {{{}}}", escape_verbatim(&v)));
+    }
+}
+
+/// Push `eprint`/`eprinttype`/`eprintclass` from CSL `custom.eprint`.
+/// Returns whether an eprint was written.
+pub(crate) fn push_eprint(fields: &mut Vec<String>, item: &Value) -> bool {
+    let eprint = &item["custom"]["eprint"];
+    let Some(id) = text_field(eprint, "id") else {
+        return false;
+    };
+    push_verbatim(fields, "eprint", Some(id));
+    push_escaped(fields, "eprinttype", text_field(eprint, "type"));
+    push_escaped(fields, "eprintclass", text_field(eprint, "class"));
+    true
 }
 
 /// Convert multiple CSL-JSON items to a BibTeX file string.
