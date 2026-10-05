@@ -2,6 +2,16 @@
 # build.sh — Build Wasm + JS bindings
 set -euo pipefail
 
+# The wasm-bindgen CLI must be exactly the version of the wasm-bindgen crate
+# in Cargo.lock, or it refuses the module — after the whole cargo build.
+lock_version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, "", $3); print $3 }' Cargo.lock)
+cli_version=$(wasm-bindgen --version | awk '{ print $2 }')
+if [[ "$cli_version" != "$lock_version" ]]; then
+  echo "error: wasm-bindgen CLI is $cli_version, Cargo.lock has $lock_version" >&2
+  echo "       cargo install wasm-bindgen-cli --version $lock_version --locked" >&2
+  exit 1
+fi
+
 echo "=== Step 1: Build Wasm ==="
 cargo build \
   --target wasm32-unknown-unknown \
