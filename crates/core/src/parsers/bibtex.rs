@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 use super::{ParseErrorInfo, ParseOptions, ParseResult};
 use biblatex::{Bibliography as BibBib, ChunksExt};
@@ -134,6 +135,34 @@ fn biblatex_type_to_csl(entry: &biblatex::Entry) -> Option<&'static str> {
     }
 }
 
+/// Convert a Hayagriva person (parsed from a BibTeX name) to a CSL name.
+///
+/// The BibTeX "von" part becomes `non-dropping-particle`: BibTeX prints it
+/// with the last name ("van der Berg", also in author-year labels), and
+/// citation-js — CiteMe's JS path — maps it the same way. A name with no
+/// given part is a `literal` (institutions: `{World Health Organization}`)
+/// unless it carries a particle or suffix, which only a person has; folding
+/// that into a literal dropped the "von" of "von Neumann".
+fn person_to_csl(p: &hayagriva::types::Person) -> Value {
+    let mut name = match &p.given_name {
+        Some(given) => json!({
+            "family": normalize_display_text(&p.name),
+            "given": normalize_display_text(given),
+        }),
+        None if p.prefix.is_some() || p.suffix.is_some() => {
+            json!({ "family": normalize_display_text(&p.name) })
+        }
+        None => return json!({ "literal": normalize_display_text(&p.name) }),
+    };
+    if let Some(prefix) = &p.prefix {
+        name["non-dropping-particle"] = json!(normalize_display_text(prefix));
+    }
+    if let Some(suffix) = &p.suffix {
+        name["suffix"] = json!(normalize_display_text(suffix));
+    }
+    name
+}
+
 /// Convert a Hayagriva Entry to a CSL-JSON serde_json::Value.
 ///
 /// This is the Entry → CSL-JSON direction (used by parsers).
@@ -183,55 +212,15 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
         obj.insert("title".into(), json!(normalize_display_text(&title)));
     }
 
-    // Authors
+    // Authors / editors
     if let Some(authors) = entry.authors() {
-        let names: Vec<serde_json::Value> = authors
-            .iter()
-            .map(|p| {
-                if let Some(given) = &p.given_name {
-                    let mut name_obj = json!({
-                        "family": normalize_display_text(&p.name),
-                        "given": normalize_display_text(given),
-                    });
-                    if let Some(prefix) = &p.prefix {
-                        name_obj["dropping-particle"] = json!(normalize_display_text(prefix));
-                    }
-                    if let Some(suffix) = &p.suffix {
-                        name_obj["suffix"] = json!(normalize_display_text(suffix));
-                    }
-                    name_obj
-                } else {
-                    json!({"literal": normalize_display_text(&p.name)})
-                }
-            })
-            .collect();
+        let names: Vec<Value> = authors.iter().map(person_to_csl).collect();
         if !names.is_empty() {
             obj.insert("author".into(), json!(names));
         }
     }
-
-    // Editors
     if let Some(editors) = entry.editors() {
-        let names: Vec<serde_json::Value> = editors
-            .iter()
-            .map(|p| {
-                if let Some(given) = &p.given_name {
-                    let mut name_obj = json!({
-                        "family": normalize_display_text(&p.name),
-                        "given": normalize_display_text(given),
-                    });
-                    if let Some(prefix) = &p.prefix {
-                        name_obj["dropping-particle"] = json!(normalize_display_text(prefix));
-                    }
-                    if let Some(suffix) = &p.suffix {
-                        name_obj["suffix"] = json!(normalize_display_text(suffix));
-                    }
-                    name_obj
-                } else {
-                    json!({"literal": normalize_display_text(&p.name)})
-                }
-            })
-            .collect();
+        let names: Vec<Value> = editors.iter().map(person_to_csl).collect();
         if !names.is_empty() {
             obj.insert("editor".into(), json!(names));
         }
@@ -400,16 +389,24 @@ fn merge_biblatex_extras(entries: &mut [Value], input: &str) {
         return;
     }
 
-    let mut index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    // Every occurrence of a key, in file order. Hayagriva keeps duplicate
+    // keys, so the n-th CSL entry with a key pairs with the n-th biblatex
+    // entry with it — pairing all of them with the first leaked one entry's
+    // type, journal and keywords into another.
+    let mut index: HashMap<&str, Vec<usize>> = HashMap::new();
     for (i, e) in bib_entries.iter().enumerate() {
-        index.entry(e.key.as_str()).or_insert(i);
+        index.entry(e.key.as_str()).or_default().push(i);
     }
+    let mut seen: HashMap<String, usize> = HashMap::new();
 
     for entry_csl in entries.iter_mut() {
         let Some(key) = entry_csl.get("id").and_then(|v| v.as_str()) else {
             continue;
         };
-        let Some(&idx) = index.get(key) else { continue };
+        let occurrence = seen.entry(key.to_string()).or_insert(0);
+        let idx = index.get(key).and_then(|all| all.get(*occurrence)).copied();
+        *occurrence += 1;
+        let Some(idx) = idx else { continue };
         let bib_entry = &bib_entries[idx];
         let Some(obj) = entry_csl.as_object_mut() else {
             continue;
@@ -919,6 +916,64 @@ mod tests {
             "merge must salvage keywords on entries with unique keys even when \
              the file contains duplicate-key entries elsewhere"
         );
+    }
+
+    #[test]
+    fn test_parse_bibtex_duplicate_keys_merge_with_their_own_entry() {
+        // Every occurrence of a duplicated key used to be merged with the
+        // FIRST biblatex entry of that key: the second `dup` below — a book —
+        // came out as article-journal, with the first entry's journal and
+        // keywords.
+        let input = r#"@article{dup,
+  author = {Smith, A},
+  title = {A},
+  journal = {X},
+  year = {2024},
+  keywords = {ml}
+}
+
+@book{dup,
+  author = {Doe, B},
+  title = {B},
+  publisher = {P},
+  year = {2020},
+  keywords = {history}
+}
+"#;
+        let result = parse_bibtex(input, &ParseOptions::default());
+        assert_eq!(result.entries.len(), 2, "{:?}", result.errors);
+        let (first, second) = (&result.entries[0], &result.entries[1]);
+        assert_eq!(first["type"], "article-journal");
+        assert_eq!(first["keyword"], "ml");
+        assert_eq!(second["title"], "B");
+        assert_eq!(second["type"], "book", "{second}");
+        assert_eq!(second["keyword"], "history", "{second}");
+        assert!(second.get("container-title").is_none(), "{second}");
+    }
+
+    #[test]
+    fn test_parse_bibtex_von_part_is_non_dropping() {
+        // BibTeX prints the von part with the last name ("van der Berg"),
+        // which is CSL's non-dropping particle; citation-js maps it the same
+        // way. As a dropping particle, APA rendered "(Berg, 2000)".
+        let input = "@book{v, author = {van der Berg, Jan and Ludwig van Beethoven and von Neumann and {World Health Organization}}, editor = {de la Fontaine, Jean}, title = {T}, year = {2000}}";
+        let result = parse_bibtex(input, &ParseOptions::default());
+        let first = &result.entries[0];
+        assert_eq!(
+            first["author"][0],
+            json!({"family": "Berg", "given": "Jan", "non-dropping-particle": "van der"})
+        );
+        assert_eq!(first["author"][1]["non-dropping-particle"], "van");
+        // No given name: the particle used to vanish into `literal: "Neumann"`.
+        assert_eq!(
+            first["author"][2],
+            json!({"family": "Neumann", "non-dropping-particle": "von"})
+        );
+        assert_eq!(
+            first["author"][3],
+            json!({"literal": "World Health Organization"})
+        );
+        assert_eq!(first["editor"][0]["non-dropping-particle"], "de la");
     }
 
     #[test]
