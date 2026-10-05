@@ -232,15 +232,17 @@ impl CitationEngine {
         }
 
         // Inject synthetic ids for items that lack them, so the bibliography
-        // key-based lookup works correctly for all items.
+        // key-based lookup works correctly for all items. Numeric ids are
+        // valid CSL-JSON and keep their identity as strings: replacing them
+        // per position split one item cited twice into two entries.
         for (i, item) in items.iter_mut().enumerate() {
             if let Some(obj) = item.as_object_mut() {
-                if !obj.contains_key("id") || obj["id"].as_str().unwrap_or("").is_empty() {
-                    obj.insert(
-                        "id".to_string(),
-                        serde_json::Value::String(format!("_citeme_batch_{i}")),
-                    );
-                }
+                let id = match obj.get("id") {
+                    Some(serde_json::Value::String(s)) if !s.is_empty() => continue,
+                    Some(serde_json::Value::Number(n)) => n.to_string(),
+                    _ => format!("_citeme_batch_{i}"),
+                };
+                obj.insert("id".to_string(), serde_json::Value::String(id));
             }
         }
 
@@ -777,6 +779,35 @@ mod tests {
         assert!(
             !results[0].reference.contains("2024a"),
             "identical duplicates must not trigger year-suffix disambiguation: {}",
+            results[0].reference
+        );
+    }
+
+    #[test]
+    fn test_format_batch_numeric_ids_keep_identity() {
+        // CSL-JSON allows numeric ids. They were treated as missing and
+        // replaced with per-position synthetic ids, so the same item cited
+        // twice became two entries and APA disambiguated it against itself
+        // ("2024a"/"2024b").
+        let mut engine = CitationEngine::new();
+        engine.load_style("apa", SAMPLE_CSL).unwrap();
+        engine.load_locale("en-US", SAMPLE_LOCALE).unwrap();
+
+        let item = r#"{"id": 7, "type": "book", "title": "Same",
+            "author": [{"family": "Smith", "given": "J"}],
+            "issued": {"date-parts": [[2024]]}}"#;
+        let results = engine
+            .format_batch(
+                &format!("[{item},{item}]"),
+                "apa",
+                "en-US",
+                &FormatOptions::default(),
+            )
+            .unwrap();
+        assert_eq!(results[0].reference, results[1].reference);
+        assert!(
+            !results[0].reference.contains("2024a"),
+            "one item cited twice must not be disambiguated: {}",
             results[0].reference
         );
     }
