@@ -1,4 +1,5 @@
 pub mod bibtex;
+mod bibtex_guard;
 pub mod csl_json;
 pub mod detect;
 pub mod medline;
@@ -36,7 +37,10 @@ impl Default for ParseOptions {
 pub struct ParseResult {
     /// Successfully parsed entries as CSL-JSON (serde_json::Value)
     pub entries: Vec<serde_json::Value>,
-    /// Entries that failed to parse
+    /// Entries that failed to parse — and, for BibTeX, a field or `@string`
+    /// that had to be dropped from an entry that was still imported (a date
+    /// the date parser can't take, a `crossref` cycle); those messages end
+    /// "imported without it", "kept as text" or "its uses read as empty".
     pub errors: Vec<ParseErrorInfo>,
     /// Detected format
     pub format: String,

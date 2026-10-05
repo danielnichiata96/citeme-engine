@@ -1,9 +1,8 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 
-use super::{ParseErrorInfo, ParseOptions, ParseResult};
-use biblatex::{Bibliography as BibBib, ChunksExt};
-use hayagriva::io::from_biblatex_str;
+use super::bibtex_guard::{self, EntryNotes};
+use super::{ParseErrorInfo, ParseOptions, ParseResult, MAX_PARSE_ERRORS};
+use biblatex::{ChunksExt, DateValue, PermissiveType, TypeError, TypeErrorKind};
 use hayagriva::Entry;
 use serde_json::{json, Value};
 use unicode_normalization::UnicodeNormalization;
@@ -94,17 +93,34 @@ fn insert_string_if_missing(
     }
 }
 
+/// Read a free-form date (`urldate`) as CSL date-parts.
+///
+/// Year-first ISO ("2024-03-15", "2024/03/15", with or without a time) is
+/// read as written. Day-first or month-first is read only when the other
+/// order is impossible ("15/03/2024", "03/15/2024"); "05/03/2024" is not
+/// guessed. Reading by position made the day the year — year 15. A month
+/// outside 1–12 or a day outside 1–31 is left out, with what follows it.
 fn date_parts_from_isoish(input: &str) -> Option<Value> {
-    let mut parts = Vec::new();
-    for raw in input.split(['-', '/']).take(3) {
-        if raw.is_empty() || !raw.chars().all(|c| c.is_ascii_digit()) {
+    let date = input.trim().split(['T', ' ']).next()?;
+    let mut numbers = Vec::new();
+    for raw in date.split(['-', '/']).take(3) {
+        if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) || raw.len() > 4 {
             break;
         }
-        let Ok(part) = raw.parse::<i32>() else { break };
-        parts.push(part);
+        numbers.push((raw.len(), raw.parse::<i32>().ok()?));
     }
-    if parts.is_empty() {
-        return None;
+    let (year, month, day) = match numbers.as_slice() {
+        [(4, y), rest @ ..] => (*y, rest.first().map(|m| m.1), rest.get(1).map(|d| d.1)),
+        [(_, d), (_, m), (4, y)] if *d > 12 => (*y, Some(*m), Some(*d)),
+        [(_, m), (_, d), (4, y)] if *d > 12 => (*y, Some(*m), Some(*d)),
+        _ => return None,
+    };
+    let mut parts = vec![year];
+    if let Some(month) = month.filter(|m| (1..=12).contains(m)) {
+        parts.push(month);
+        if let Some(day) = day.filter(|d| (1..=31).contains(d)) {
+            parts.push(day);
+        }
     }
     Some(json!({ "date-parts": [parts] }))
 }
@@ -212,15 +228,29 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
         obj.insert("title".into(), json!(normalize_display_text(&title)));
     }
 
-    // Authors / editors
+    // Authors / editors. BibTeX's `and others` truncates a name list (Google
+    // Scholar writes it for long ones); read as a name, it became an author
+    // literally called "others". CSL has no truncation marker, so drop it.
+    let names = |people: &[hayagriva::types::Person]| -> Vec<Value> {
+        people
+            .iter()
+            .filter(|p| {
+                !(p.name.eq_ignore_ascii_case("others")
+                    && p.given_name.is_none()
+                    && p.prefix.is_none()
+                    && p.suffix.is_none())
+            })
+            .map(person_to_csl)
+            .collect()
+    };
     if let Some(authors) = entry.authors() {
-        let names: Vec<Value> = authors.iter().map(person_to_csl).collect();
+        let names = names(authors);
         if !names.is_empty() {
             obj.insert("author".into(), json!(names));
         }
     }
     if let Some(editors) = entry.editors() {
-        let names: Vec<Value> = editors.iter().map(person_to_csl).collect();
+        let names = names(editors);
         if !names.is_empty() {
             obj.insert("editor".into(), json!(names));
         }
@@ -350,212 +380,315 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
     serde_json::Value::Object(obj)
 }
 
-/// Collect biblatex entries from `input`, tolerating duplicate cite keys and
-/// individual malformed entries.
+/// Fill in what hayagriva's BibLaTeX interop drops or gets wrong, read from
+/// the same `biblatex` entry the CSL entry was converted from: the entry
+/// type, `keywords`, `series`, standalone `pmid`/`pmcid`,
+/// `eprint`/`eprinttype`/`eprintclass`, the start of a date range, a
+/// numeric month, a page list, a URL given in `howpublished`/`note`, and
+/// the key as written.
 ///
-/// `biblatex::Bibliography::parse` bails with `DuplicateKey` on collisions,
-/// and with whatever first grammar error it hits on broken input. Hayagriva
-/// (the primary parser) is more tolerant in both cases, so a single bad entry
-/// or one accidental duplicate would otherwise wipe out the merge for every
-/// usable entry in the file. Falling back to per-chunk parse salvages the rest.
-fn collect_biblatex_entries(input: &str) -> Vec<biblatex::Entry> {
-    if let Ok(bib) = BibBib::parse(input) {
-        return bib.into_iter().collect();
+/// This used to merge a second `biblatex` parse into hayagriva's entries by
+/// cite key and occurrence count. The count shifted whenever hayagriva
+/// rejected one of two entries sharing a key, and the survivor took its
+/// twin's type and journal.
+fn apply_biblatex_fields(csl: &mut Value, bib_entry: &biblatex::Entry, notes: Option<&EntryNotes>) {
+    let Some(obj) = csl.as_object_mut() else {
+        return;
+    };
+
+    // A duplicate key parses under a fresh one; the id is the key written.
+    if let Some(notes) = notes {
+        obj.insert("id".into(), json!(notes.key));
     }
 
-    let mut out = Vec::new();
-    for chunk in input.split("\n@") {
-        let chunk = chunk.trim();
-        if chunk.is_empty() {
-            continue;
-        }
-        let entry_str = if chunk.starts_with('@') {
-            chunk.to_string()
-        } else {
-            format!("@{chunk}")
-        };
-        let lower = entry_str.to_lowercase();
-        if lower.starts_with("@preamble")
-            || lower.starts_with("@string")
-            || lower.starts_with("@comment")
-        {
-            continue;
-        }
-        if let Ok(bib) = BibBib::parse(&entry_str) {
-            out.extend(bib.into_iter());
+    if let Some(csl_type) = biblatex_type_to_csl(bib_entry) {
+        obj.insert("type".into(), json!(csl_type));
+    }
+
+    insert_string_if_missing(
+        obj,
+        "container-title",
+        bib_field(
+            bib_entry,
+            &["journaltitle", "journal", "booktitle", "eventtitle"],
+        ),
+    );
+    insert_string_if_missing(obj, "event-title", bib_field(bib_entry, &["eventtitle"]));
+    insert_string_if_missing(
+        obj,
+        "publisher-place",
+        bib_field(bib_entry, &["location", "address"]),
+    );
+    insert_string_if_missing(
+        obj,
+        "publisher",
+        bib_field(bib_entry, &["publisher", "institution", "school"]),
+    );
+    insert_string_if_missing(obj, "volume", bib_field(bib_entry, &["volume"]));
+    insert_string_if_missing(obj, "issue", bib_field(bib_entry, &["number", "issue"]));
+    insert_string_if_missing(obj, "page", bib_field(bib_entry, &["pages"]));
+    insert_string_if_missing(obj, "URL", bib_field(bib_entry, &["url"]));
+    insert_string_if_missing(obj, "DOI", bib_field(bib_entry, &["doi"]));
+    insert_string_if_missing(obj, "version", bib_field(bib_entry, &["version"]));
+
+    if !obj.contains_key("accessed") {
+        if let Some(date) = bib_field(bib_entry, &["urldate"]) {
+            if let Some(date_parts) = date_parts_from_isoish(&date) {
+                obj.insert("accessed".into(), date_parts);
+            }
         }
     }
-    out
+
+    // keywords: CSL uses `keyword` (singular, comma-separated string per v1.0 schema)
+    if !obj.contains_key("keyword") {
+        if let Ok(chunks) = bib_entry.keywords() {
+            let raw = chunks.format_verbatim();
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                obj.insert("keyword".into(), json!(normalize_display_text(trimmed)));
+            }
+        }
+    }
+
+    // series → collection-title. Hayagriva nests series under a synthetic
+    // parent whose type inherits from the main parent (e.g. Anthology for
+    // incollection), making it awkward to traverse. Reading the raw field
+    // is simpler and matches what BibTeX users expect.
+    if !obj.contains_key("collection-title") {
+        if let Ok(chunks) = bib_entry.series() {
+            let raw = chunks.format_verbatim();
+            let v = normalize_display_text(raw.trim());
+            if !v.is_empty() {
+                obj.insert("collection-title".into(), json!(v));
+            }
+        }
+    }
+
+    // Direct `pmid`/`pmcid` fields: hayagriva 0.9 only reads these from
+    // `eprint`/`eprinttype = pubmed`; a standalone `pmid = {...}` is dropped.
+    // Fill from biblatex Entry::get() when not already present.
+    if !obj.contains_key("PMID") {
+        if let Some(chunks) = bib_entry.get("pmid") {
+            let v = chunks.format_verbatim().trim().to_string();
+            if !v.is_empty() {
+                obj.insert("PMID".into(), json!(v));
+            }
+        }
+    }
+    if !obj.contains_key("PMCID") {
+        if let Some(chunks) = bib_entry.get("pmcid") {
+            let v = chunks.format_verbatim().trim().to_string();
+            if !v.is_empty() {
+                obj.insert("PMCID".into(), json!(v));
+            }
+        }
+    }
+
+    // eprint / eprinttype / eprintclass → custom.eprint = { id, type, class }
+    //
+    // Require both id AND type to emit. An `eprint = {…}` without
+    // `eprinttype` is meaningless to downstream styles (they need the type
+    // to route to arxiv, pubmed, etc.); emitting a type-less `custom.eprint`
+    // would leak into our BibTeX exporter as a broken `eprint = {…}`
+    // without `eprinttype = {…}` that many style files choke on.
+    //
+    // If hayagriva already set `custom.eprint` (via `entry.arxiv()` when
+    // `eprinttype = arxiv`), augment with `class` but preserve id/type.
+    if let Ok(id) = bib_entry.eprint() {
+        let id = id.trim().to_string();
+        let eprint_type = bib_entry
+            .eprint_type()
+            .ok()
+            .map(|c| c.format_verbatim().trim().to_lowercase())
+            .filter(|s| !s.is_empty());
+        let eprint_class = bib_entry
+            .eprint_class()
+            .ok()
+            .map(|c| c.format_verbatim().trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        // Require id + type to avoid leaking incomplete `custom.eprint`
+        // into downstream exports. If hayagriva already populated
+        // `custom.eprint` via `entry.arxiv()`, this branch also fires
+        // (biblatex reads the same `eprinttype` field), and we layer
+        // `class` in via the map-merge below without clobbering id/type.
+        if !id.is_empty() && eprint_type.is_some() {
+            let custom = obj.entry("custom").or_insert_with(|| json!({}));
+            if let Some(map) = custom.as_object_mut() {
+                let mut eprint_obj = match map.get("eprint").cloned() {
+                    Some(Value::Object(m)) => m,
+                    _ => serde_json::Map::new(),
+                };
+                eprint_obj.entry("id").or_insert_with(|| json!(id));
+                if let Some(t) = eprint_type {
+                    eprint_obj.entry("type").or_insert_with(|| json!(t));
+                }
+                if let Some(c) = eprint_class {
+                    eprint_obj.insert("class".into(), json!(c));
+                }
+                if !eprint_obj.is_empty() {
+                    map.insert("eprint".into(), Value::Object(eprint_obj));
+                }
+            }
+        }
+    }
+
+    // hayagriva reads a biblatex range as its end: `date = {2020/2021}`
+    // imported as 2021. A single CSL date is where the range starts.
+    if let Ok(PermissiveType::Typed(date)) = bib_entry.date() {
+        if let DateValue::Between(start, _) = date.value {
+            let mut parts = vec![start.year];
+            if let Some(month) = start.month {
+                parts.push(i32::from(month) + 1);
+                if let Some(day) = start.day {
+                    parts.push(i32::from(day) + 1);
+                }
+            }
+            obj.insert("issued".into(), json!({ "date-parts": [parts] }));
+        }
+    }
+
+    // biblatex 0.11 reads `month` only as a name, so `month = {5}` — the form
+    // biblatex documents — was dropped, and a `day` with it.
+    if bib_entry.get("date").is_none() {
+        let number = |key: &str, max: i32| {
+            bib_entry
+                .get(key)
+                .map(|chunks| chunks.format_verbatim())
+                .and_then(|text| text.trim().parse::<i32>().ok())
+                .filter(|n| (1..=max).contains(n))
+        };
+        let year_only = obj
+            .get_mut("issued")
+            .and_then(|issued| issued["date-parts"][0].as_array_mut())
+            .filter(|parts| parts.len() == 1);
+        if let (Some(parts), Some(month)) = (year_only, number("month", 12)) {
+            parts.push(json!(month));
+            if let Some(day) = number("day", 31) {
+                parts.push(json!(day));
+            }
+        }
+    }
+
+    // A page list ("100--115, 200") came out of hayagriva without its
+    // separators: "100-115200".
+    if let Some(pages) = bib_entry
+        .get("pages")
+        .map(|chunks| chunks.format_verbatim())
+    {
+        if pages.contains(',') {
+            let pages = pages.trim().replace(['–', '—'], "-");
+            obj.insert("page".into(), json!(normalize_display_text(&pages)));
+        }
+    }
+
+    if !obj.contains_key("URL") {
+        if let Some(url) = notes.and_then(|notes| notes.url.as_deref()) {
+            obj.insert("URL".into(), json!(url));
+        }
+    }
 }
 
-/// Merge fields that Hayagriva's BibLaTeX interop drops — specifically
-/// `keywords`, `series`, standalone `pmid`/`pmcid`, and
-/// `eprint`/`eprinttype`/`eprintclass` — by re-parsing `input` with the
-/// `biblatex` crate and matching entries by cite key.
-///
-/// Opção B from the plan: pragmatic dual-parse until upstream Hayagriva
-/// exposes these on `Entry`. O(n) lookup-map build + O(1) merge per entry.
-fn merge_biblatex_extras(entries: &mut [Value], input: &str) {
-    let bib_entries = collect_biblatex_entries(input);
-    if bib_entries.is_empty() {
+/// Convert one `biblatex` entry, dropping a field hayagriva rejects rather
+/// than the entry. `year = {in press}` failed the date conversion and took
+/// the whole entry with it — and, while the file was converted in one go,
+/// every other entry too.
+fn convert_entry(
+    bib_entry: &biblatex::Entry,
+) -> Result<(Entry, Cow<'_, biblatex::Entry>), TypeError> {
+    let mut current = Cow::Borrowed(bib_entry);
+    loop {
+        let error = match Entry::try_from(current.as_ref()) {
+            Ok(entry) => return Ok((entry, current)),
+            Err(error) => error,
+        };
+        let Some(field) = field_to_drop(&current, &error) else {
+            return Err(error);
+        };
+        current.to_mut().remove(&field);
+    }
+}
+
+/// A `year` or `date` written as words — "in press", "forthcoming" — is a
+/// publication status, CSL's `status`, which styles print where the date
+/// would be. Dropped as an unreadable date, it rendered "(n.d.)".
+fn status_from_dropped_date(
+    csl: &mut Value,
+    written: &biblatex::Entry,
+    converted: &biblatex::Entry,
+) {
+    let Some(obj) = csl.as_object_mut() else {
         return;
-    }
-
-    // Every occurrence of a key, in file order. Hayagriva keeps duplicate
-    // keys, so the n-th CSL entry with a key pairs with the n-th biblatex
-    // entry with it — pairing all of them with the first leaked one entry's
-    // type, journal and keywords into another.
-    let mut index: HashMap<&str, Vec<usize>> = HashMap::new();
-    for (i, e) in bib_entries.iter().enumerate() {
-        index.entry(e.key.as_str()).or_default().push(i);
-    }
-    let mut seen: HashMap<String, usize> = HashMap::new();
-
-    for entry_csl in entries.iter_mut() {
-        let Some(key) = entry_csl.get("id").and_then(|v| v.as_str()) else {
+    };
+    for key in ["year", "date"] {
+        if converted.get(key).is_some() {
+            continue;
+        }
+        let Some(text) = written.get(key).map(|chunks| chunks.format_verbatim()) else {
             continue;
         };
-        let occurrence = seen.entry(key.to_string()).or_insert(0);
-        let idx = index.get(key).and_then(|all| all.get(*occurrence)).copied();
-        *occurrence += 1;
-        let Some(idx) = idx else { continue };
-        let bib_entry = &bib_entries[idx];
-        let Some(obj) = entry_csl.as_object_mut() else {
-            continue;
-        };
-
-        if let Some(csl_type) = biblatex_type_to_csl(bib_entry) {
-            obj.insert("type".into(), json!(csl_type));
-        }
-
-        insert_string_if_missing(
-            obj,
-            "container-title",
-            bib_field(
-                bib_entry,
-                &["journaltitle", "journal", "booktitle", "eventtitle"],
-            ),
-        );
-        insert_string_if_missing(obj, "event-title", bib_field(bib_entry, &["eventtitle"]));
-        insert_string_if_missing(
-            obj,
-            "publisher-place",
-            bib_field(bib_entry, &["location", "address"]),
-        );
-        insert_string_if_missing(
-            obj,
-            "publisher",
-            bib_field(bib_entry, &["publisher", "institution", "school"]),
-        );
-        insert_string_if_missing(obj, "volume", bib_field(bib_entry, &["volume"]));
-        insert_string_if_missing(obj, "issue", bib_field(bib_entry, &["number", "issue"]));
-        insert_string_if_missing(obj, "page", bib_field(bib_entry, &["pages"]));
-        insert_string_if_missing(obj, "URL", bib_field(bib_entry, &["url"]));
-        insert_string_if_missing(obj, "DOI", bib_field(bib_entry, &["doi"]));
-        insert_string_if_missing(obj, "version", bib_field(bib_entry, &["version"]));
-
-        if !obj.contains_key("accessed") {
-            if let Some(date) = bib_field(bib_entry, &["urldate"]) {
-                if let Some(date_parts) = date_parts_from_isoish(&date) {
-                    obj.insert("accessed".into(), date_parts);
-                }
-            }
-        }
-
-        // keywords: CSL uses `keyword` (singular, comma-separated string per v1.0 schema)
-        if !obj.contains_key("keyword") {
-            if let Ok(chunks) = bib_entry.keywords() {
-                let raw = chunks.format_verbatim();
-                let trimmed = raw.trim();
-                if !trimmed.is_empty() {
-                    obj.insert("keyword".into(), json!(normalize_display_text(trimmed)));
-                }
-            }
-        }
-
-        // series → collection-title. Hayagriva nests series under a synthetic
-        // parent whose type inherits from the main parent (e.g. Anthology for
-        // incollection), making it awkward to traverse. Reading the raw field
-        // is simpler and matches what BibTeX users expect.
-        if !obj.contains_key("collection-title") {
-            if let Ok(chunks) = bib_entry.series() {
-                let raw = chunks.format_verbatim();
-                let v = normalize_display_text(raw.trim());
-                if !v.is_empty() {
-                    obj.insert("collection-title".into(), json!(v));
-                }
-            }
-        }
-
-        // Direct `pmid`/`pmcid` fields: hayagriva 0.9 only reads these from
-        // `eprint`/`eprinttype = pubmed`; a standalone `pmid = {...}` is dropped.
-        // Fill from biblatex Entry::get() when not already present.
-        if !obj.contains_key("PMID") {
-            if let Some(chunks) = bib_entry.get("pmid") {
-                let v = chunks.format_verbatim().trim().to_string();
-                if !v.is_empty() {
-                    obj.insert("PMID".into(), json!(v));
-                }
-            }
-        }
-        if !obj.contains_key("PMCID") {
-            if let Some(chunks) = bib_entry.get("pmcid") {
-                let v = chunks.format_verbatim().trim().to_string();
-                if !v.is_empty() {
-                    obj.insert("PMCID".into(), json!(v));
-                }
-            }
-        }
-
-        // eprint / eprinttype / eprintclass → custom.eprint = { id, type, class }
-        //
-        // Require both id AND type to emit. An `eprint = {…}` without
-        // `eprinttype` is meaningless to downstream styles (they need the type
-        // to route to arxiv, pubmed, etc.); emitting a type-less `custom.eprint`
-        // would leak into our BibTeX exporter as a broken `eprint = {…}`
-        // without `eprinttype = {…}` that many style files choke on.
-        //
-        // If hayagriva already set `custom.eprint` (via `entry.arxiv()` when
-        // `eprinttype = arxiv`), augment with `class` but preserve id/type.
-        if let Ok(id) = bib_entry.eprint() {
-            let id = id.trim().to_string();
-            let eprint_type = bib_entry
-                .eprint_type()
-                .ok()
-                .map(|c| c.format_verbatim().trim().to_lowercase())
-                .filter(|s| !s.is_empty());
-            let eprint_class = bib_entry
-                .eprint_class()
-                .ok()
-                .map(|c| c.format_verbatim().trim().to_string())
-                .filter(|s| !s.is_empty());
-
-            // Require id + type to avoid leaking incomplete `custom.eprint`
-            // into downstream exports. If hayagriva already populated
-            // `custom.eprint` via `entry.arxiv()`, this branch also fires
-            // (biblatex reads the same `eprinttype` field), and we layer
-            // `class` in via the map-merge below without clobbering id/type.
-            if !id.is_empty() && eprint_type.is_some() {
-                let custom = obj.entry("custom").or_insert_with(|| json!({}));
-                if let Some(map) = custom.as_object_mut() {
-                    let mut eprint_obj = match map.get("eprint").cloned() {
-                        Some(Value::Object(m)) => m,
-                        _ => serde_json::Map::new(),
-                    };
-                    eprint_obj.entry("id").or_insert_with(|| json!(id));
-                    if let Some(t) = eprint_type {
-                        eprint_obj.entry("type").or_insert_with(|| json!(t));
-                    }
-                    if let Some(c) = eprint_class {
-                        eprint_obj.insert("class".into(), json!(c));
-                    }
-                    if !eprint_obj.is_empty() {
-                        map.insert("eprint".into(), Value::Object(eprint_obj));
-                    }
-                }
-            }
+        let text = text.trim();
+        if !text.is_empty() && text.chars().all(|c| c.is_alphabetic() || c == ' ') {
+            obj.entry("status")
+                .or_insert_with(|| json!(normalize_display_text(text)));
+            return;
         }
     }
+}
+
+/// The date fields hayagriva converts, least significant part first.
+const DATE_FIELDS: &[&str] = &[
+    "day",
+    "month",
+    "year",
+    "date",
+    "urlday",
+    "urlmonth",
+    "urlyear",
+    "urldate",
+    "eventday",
+    "eventmonth",
+    "eventyear",
+    "eventdate",
+    "origday",
+    "origmonth",
+    "origyear",
+    "origdate",
+];
+
+/// The field a conversion error is about: the one its span falls in — but
+/// biblatex reports some date errors (a day read out of `month`) with a span
+/// relative to the value, so a date error outside the date fields falls
+/// back to them, least significant first.
+fn field_to_drop(entry: &biblatex::Entry, error: &TypeError) -> Option<String> {
+    let date_only = matches!(
+        error.kind,
+        TypeErrorKind::UndefinedRange
+            | TypeErrorKind::DayOutOfRange
+            | TypeErrorKind::MonthOutOfRange
+            | TypeErrorKind::MissingNumber
+            | TypeErrorKind::WrongNumberOfDigits
+            | TypeErrorKind::YearZeroCE
+    );
+    let at = error.span.start;
+    let by_span = entry
+        .fields
+        .iter()
+        .filter(|(_, chunks)| {
+            let span = chunks.span();
+            span.start < span.end && span.contains(&at)
+        })
+        .min_by_key(|(_, chunks)| chunks.span().len())
+        .map(|(key, _)| key.as_str())
+        .filter(|key| DATE_FIELDS.contains(key) || !date_only);
+    by_span
+        .or_else(|| {
+            DATE_FIELDS
+                .iter()
+                .copied()
+                .find(|key| entry.fields.contains_key(*key))
+        })
+        .map(str::to_string)
 }
 
 /// Parse BibTeX/BibLaTeX content into CSL-JSON.
@@ -589,106 +722,43 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
     }
 
     let normalized_input = normalize_bibtex_input(input);
-    let input = normalized_input.as_ref();
+    let guarded = bibtex_guard::parse(normalized_input.as_ref());
+    let mut errors = guarded.errors;
+    let mut entries = Vec::new();
+    let mut truncated = false;
 
-    match from_biblatex_str(input) {
-        Ok(library) => {
-            let mut entries = Vec::new();
-            let total = library.len();
-            let mut truncated = false;
-
-            for entry in library.iter() {
-                if let Some(max) = options.max_entries {
-                    if entries.len() >= max {
-                        truncated = true;
-                        break;
-                    }
-                }
-
-                entries.push(entry_to_csl_json(entry));
+    // One parse for the whole file, then one conversion per entry: an entry
+    // hayagriva can't convert costs that entry, not the file.
+    for bib_entry in &guarded.parsed {
+        if options.max_entries.is_some_and(|max| entries.len() >= max) {
+            truncated = true;
+            break;
+        }
+        let notes = guarded.notes.get(&bib_entry.key);
+        match convert_entry(bib_entry) {
+            Ok((entry, converted)) => {
+                let mut csl = entry_to_csl_json(&entry);
+                apply_biblatex_fields(&mut csl, &converted, notes);
+                status_from_dropped_date(&mut csl, bib_entry, &converted);
+                entries.push(csl);
             }
-
-            // Merge fields hayagriva drops (keywords, eprint/type/class).
-            merge_biblatex_extras(&mut entries, input);
-
-            ParseResult {
-                entries,
-                errors: vec![],
-                format: "bibtex".to_string(),
-                truncated,
-                scanned_entries: total,
+            Err(error) => {
+                if errors.len() < MAX_PARSE_ERRORS {
+                    errors.push(ParseErrorInfo {
+                        preview: notes.map(|n| n.preview.clone()).unwrap_or_default(),
+                        error: format!("biblatex type error: {error}"),
+                    });
+                }
             }
         }
-        Err(_) => {
-            // Whole-file parse failed. Attempt per-entry recovery.
-            let mut entries = Vec::new();
-            let mut errors = Vec::new();
-            let mut scanned = 0;
-            let mut truncated = false;
+    }
 
-            for chunk in input.split("\n@") {
-                let chunk = chunk.trim();
-                if chunk.is_empty() {
-                    continue;
-                }
-
-                let entry_str = if chunk.starts_with('@') {
-                    chunk.to_string()
-                } else {
-                    format!("@{chunk}")
-                };
-
-                let lower = entry_str.to_lowercase();
-                if lower.starts_with("@preamble")
-                    || lower.starts_with("@string")
-                    || lower.starts_with("@comment")
-                {
-                    continue;
-                }
-
-                scanned += 1;
-                if let Some(max) = options.max_entries {
-                    if entries.len() >= max {
-                        truncated = true;
-                        break;
-                    }
-                }
-
-                match from_biblatex_str(&entry_str) {
-                    Ok(lib) => {
-                        for entry in lib.iter() {
-                            entries.push(entry_to_csl_json(entry));
-                        }
-                    }
-                    Err(e) => {
-                        if errors.len() < crate::parsers::MAX_PARSE_ERRORS {
-                            errors.push(ParseErrorInfo {
-                                preview: entry_str.chars().take(80).collect(),
-                                error: e
-                                    .first()
-                                    .map(|e| format!("{e}"))
-                                    .unwrap_or_default()
-                                    .to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Recovery path: `merge_biblatex_extras` falls through to
-            // per-chunk biblatex parsing when the whole-file parse fails, so
-            // individual recovered entries still get their keywords/series/
-            // pmid/eprint fields filled in.
-            merge_biblatex_extras(&mut entries, input);
-
-            ParseResult {
-                entries,
-                errors,
-                format: "bibtex".to_string(),
-                truncated,
-                scanned_entries: scanned,
-            }
-        }
+    ParseResult {
+        entries,
+        errors,
+        format: "bibtex".to_string(),
+        truncated,
+        scanned_entries: guarded.scanned,
     }
 }
 
