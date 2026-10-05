@@ -226,13 +226,15 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
         }
     }
 
-    // Date
+    // Date. hayagriva's `Date` is zero-based (month 0-11, day 0-30); CSL
+    // date-parts are one-based. Pushing them raw shifted every imported date
+    // back — `month = may` became April and January became month 0.
     if let Some(date) = entry.date() {
         let mut parts: Vec<i32> = vec![date.year];
         if let Some(m) = date.month {
-            parts.push(m as i32);
+            parts.push(i32::from(m) + 1);
             if let Some(d) = date.day {
-                parts.push(d as i32);
+                parts.push(i32::from(d) + 1);
             }
         }
         obj.insert("issued".into(), json!({"date-parts": [parts]}));
@@ -323,9 +325,19 @@ fn entry_to_csl_json(entry: &Entry) -> serde_json::Value {
         }
     }
 
-    // Genre
+    // Genre. biblatex's `type` holds localization keys (`phdthesis`,
+    // `mathesis`, …) that hayagriva copies verbatim; spelled as a genre they
+    // printed "[Phdthesis]". Known keys become the text biblatex would print.
     if let Some(genre) = entry.genre() {
         let value = genre.to_string();
+        let value = match value.trim() {
+            "phdthesis" => "Doctoral dissertation".to_string(),
+            "mathesis" => "Master's thesis".to_string(),
+            "candthesis" => "Candidate thesis".to_string(),
+            "techreport" => "technical report".to_string(),
+            "resreport" => "research report".to_string(),
+            _ => value,
+        };
         obj.insert("genre".into(), json!(normalize_display_text(&value)));
     }
 
@@ -974,6 +986,35 @@ mod tests {
             json!({"literal": "World Health Organization"})
         );
         assert_eq!(first["editor"][0]["non-dropping-particle"], "de la");
+    }
+
+    #[test]
+    fn test_parse_bibtex_month_and_day_are_one_based() {
+        // hayagriva's Date stores month 0-11 and day 0-30; pushing them raw
+        // shifted every date back: `month = may` became April, and January
+        // became month 0 (APA rendered "(2019, 256)").
+        let input = "@article{a, title={A}, year={2019}, month=may}\n\n@article{b, title={B}, date={2019-01-01}}\n\n@article{c, title={C}, date={2020-12-31}}";
+        let result = parse_bibtex(input, &ParseOptions::default());
+        let dates: Vec<&Value> = result
+            .entries
+            .iter()
+            .map(|e| &e["issued"]["date-parts"][0])
+            .collect();
+        assert_eq!(dates[0], &json!([2019, 5]));
+        assert_eq!(dates[1], &json!([2019, 1, 1]));
+        assert_eq!(dates[2], &json!([2020, 12, 31]));
+    }
+
+    #[test]
+    fn test_parse_biblatex_thesis_type_keys_become_readable_genres() {
+        // biblatex files (JabRef, our own exporter before) carry localization
+        // keys in `type`; hayagriva copies them verbatim into genre, so APA
+        // printed "[Phdthesis]".
+        let input = "@thesis{a, author={A, B}, title={T}, type={phdthesis}, institution={U}, date={2020}}\n\n@thesis{b, author={C, D}, title={T2}, type={mathesis}, institution={U}, date={2020}}\n\n@thesis{c, author={E, F}, title={T3}, type={Tese (Doutorado em Letras)}, institution={U}, date={2020}}";
+        let result = parse_bibtex(input, &ParseOptions::default());
+        assert_eq!(result.entries[0]["genre"], "Doctoral dissertation");
+        assert_eq!(result.entries[1]["genre"], "Master's thesis");
+        assert_eq!(result.entries[2]["genre"], "Tese (Doutorado em Letras)");
     }
 
     #[test]
