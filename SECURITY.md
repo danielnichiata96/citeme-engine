@@ -23,8 +23,9 @@ application:
 - **A reachable panic.** The engine builds with `panic = "abort"` on
   `wasm32-unknown-unknown`, so a panic cannot be caught at the Wasm boundary —
   it poisons the instance and forces a re-instantiation. Any input that panics
-  the parsers, normalizer, or exporters is a denial-of-service bug and is
-  treated as a security issue. `crates/core/tests/no_panic_props.rs` exists to
+  the parsers, normalizer, formatter, or exporters is a denial-of-service bug
+  and is treated as a security issue — CSL-JSON passed to `formatOne` /
+  `formatBatch` included. `crates/core/tests/no_panic_props.rs` exists to
   make this unreachable; a counterexample is a real finding.
 - **Silent output corruption.** Malformed or adversarial input that produces
   syntactically valid but *wrong* BibTeX/BibLaTeX/RIS/YAML — for example

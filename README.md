@@ -6,7 +6,7 @@ Bibliography interchange and CSL formatting for Rust and the browser.
 **Writes** BibTeX, BibLaTeX, RIS and Hayagriva YAML.
 **Renders** citations and bibliographies in any CSL style, in 7 locales.
 
-Ships as a ~540 KB (gzip) Wasm module with no runtime dependencies, so all of
+Ships as a ~575 KB (gzip) Wasm module with no runtime dependencies, so all of
 it runs client-side. Built for and used in production by
 [CiteMe](https://citeme.app).
 
@@ -38,10 +38,18 @@ Two more things worth knowing about:
 
 - **CSL XML normalization** (`crates/core/src/normalize.rs`) works around a
   Hayagriva ≤0.9 date-rendering bug: the `delimiter` of a `<date>` element is
-  emitted between every `<date-part>` even when a neighbor is empty, so a
+  emitted after a `<date-part>` even when every part after it is empty, so a
   year-only date renders as `"2018 "` and a parent suffix turns it into
-  `"2018 ;"`. Every style and locale is rewritten to use per-part `prefix`
-  instead. The transform is idempotent.
+  `"2018 ;"`. Dates that start with the year are rewritten to use per-part
+  `prefix` instead; day- and month-first dates end with the year, so they
+  can't trail and are left alone. The transform is idempotent, and a corpus
+  test renders every production style both ways.
+- **CSL-JSON preparation** (`crates/core/src/csl_item.rs`): Hayagriva reads
+  CSL-JSON through a type that rejects a whole item over one value it can't
+  hold — a `null`, a boolean, a keyword list, an extension object such as
+  `custom` — and panics on two valid date shapes. Items are rewritten first:
+  what Hayagriva would ignore is dropped, text is trimmed, out-of-range months
+  and days are dropped, and the rest is refused with a reason.
 - **ABNT post-processing** (`crates/core/src/abnt.rs`) applies the family-name
   uppercasing that Brazil's ABNT 2023 requires and CSL can't express, while
   protecting institutional acronyms (IBGE, CAPES, USP, …) from being mangled.
@@ -49,7 +57,10 @@ Two more things worth knowing about:
 ### Error tolerance
 
 Parsing returns partial results instead of failing the batch — importing
-user-pasted content, 47 good entries out of 50 beats an error:
+user-pasted content, 47 good entries out of 50 beats an error. `errors` also
+names a BibTeX field that had to be dropped from an entry that was still
+imported (a date the date parser can't take, a `crossref` cycle), and says
+so:
 
 ```jsonc
 {
@@ -105,7 +116,7 @@ Also available as a plain Rust crate (`crates/core`) with no Wasm involved.
 ## Conformance
 
 **Not a full CSL processor, and not trying to be.** What's guaranteed is that
-the 60 styles in `tests/fixtures/styles/corpus/` — the set CiteMe serves in
+the 59 styles in `tests/fixtures/styles/corpus/` — the set CiteMe serves in
 production, spanning APA, ABNT, Chicago, Harvard, IEEE, MLA, Vancouver and
 others — load and format without panicking across all supported locales,
 enforced in CI on every commit. Arbitrary CSL beyond that corpus generally
@@ -152,6 +163,13 @@ Two distinct failure modes, with different blast radii:
   every locale term), unsupported output formats all surface as ordinary JS
   exceptions with a message. The engine instance stays healthy; just catch
   and continue.
+- **Valid CSL-JSON the renderer can't represent is an `Err` too** (since
+  0.4.0): a date range (`[[2019], [2020]]`, `"raw": "2019/2020"`) or a date
+  given only as `literal` text is refused as `unsupported CSL-JSON input:
+  issued: …` instead of being rendered without its date — format the start
+  date alone if that's what you want. In a batch, one such item fails the
+  call, naming the item by position. Malformed items (a name that is a
+  string, a date part that isn't a number) are `invalid CSL-JSON input`.
 - **A Rust panic aborts the instance — and cannot be caught at the
   boundary.** This crate builds with `panic = "abort"`, and
   `wasm32-unknown-unknown` has no unwinding anyway, so `catch_unwind`-style
@@ -168,9 +186,15 @@ make it **unreachable** rather than catchable, enforced in CI:
 - `crates/core/tests/corpus_smoke.rs` — every CSL style CiteMe serves in
   production (`tests/fixtures/styles/corpus/`) must load and format a
   battery of items in all supported locales.
+- `js/test/no-abort.test.mjs` — inputs that once aborted the instance, run
+  against the release binary, where a panic really is an abort (the Rust
+  suites run with unwinding).
 
 Consumers may keep a last-resort "reset engine on `RuntimeError`" guard as
-defense in depth, but as of 0.3.4 it is expected to be dead code.
+defense in depth. Before 0.4.0 it was not dead code — a CSL-JSON date range,
+an empty date, a value opening with punctuation after a non-breaking-space
+prefix, and several BibTeX pastes all aborted the instance (see the
+CHANGELOG) — and it is expected to be now.
 
 To assert the JSON contract once at boot instead of per call, compare
 `resultShapeVersion()` against the version your schemas were written for

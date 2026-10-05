@@ -44,7 +44,11 @@ New behavior needs a test, and the test should fail before the fix.
 - Anything touching untrusted input — extend
   `crates/core/tests/no_panic_props.rs` (proptest). This crate builds with
   `panic = "abort"`; a panic can't be caught at the Wasm boundary, so
-  "unreachable" is the only acceptable guarantee.
+  "unreachable" is the only acceptable guarantee. Run it with a high
+  `PROPTEST_CASES` (e.g. 20000, `--release`) before a release: the default
+  256 cases miss rare inputs.
+- A panic you fixed — add its input to `js/test/no-abort.test.mjs`, which
+  runs the release binary, where a panic really is an abort.
 - Export changes — `crates/core/tests/export_validity.rs` asserts that what we
   emit is accepted by a parser for that format. Keep it that way.
 - New or changed public Wasm methods — pin them in
@@ -56,6 +60,12 @@ Every JSON payload the engine returns is versioned by `resultShapeVersion()`.
 A breaking shape change means bumping it, and consumers assert it once at
 boot. Don't change a shape without bumping — silent drift turns into schema
 errors scattered across call sites in downstream apps.
+
+## Vendored Hayagriva
+
+`vendor/hayagriva/` is Hayagriva 0.9.1 with one fix, wired in through
+`[patch.crates-io]`; `vendor/README.md` says what changed and when to delete
+it. Don't edit it beyond upstreamable fixes, and record each one there.
 
 ## Style corpus
 

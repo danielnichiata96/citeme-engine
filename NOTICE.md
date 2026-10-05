@@ -6,7 +6,7 @@ under their own terms.
 
 ## CSL styles and locales (test fixtures)
 
-- `tests/fixtures/styles/corpus/*.csl` — 60 citation styles
+- `tests/fixtures/styles/corpus/*.csl` — 59 citation styles
 - `tests/fixtures/locales/locales-*.xml` — 7 locale files
 
 These come from the [Citation Style Language](https://citationstyles.org)
@@ -31,3 +31,8 @@ The engine builds on [Hayagriva](https://github.com/typst/hayagriva) and
 do the CSL rendering and BibTeX tokenizing respectively. Run
 `cargo tree --workspace` for the full dependency graph; every transitive
 dependency is permissively licensed.
+
+`vendor/hayagriva/` is Hayagriva 0.9.1 with a one-line fix (see
+`vendor/README.md`), under its own MIT OR Apache-2.0 licenses, which sit
+alongside it. It is compiled into the Wasm binary, as the crates.io release
+was before.

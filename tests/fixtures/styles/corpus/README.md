@@ -14,4 +14,4 @@ Check mode exits 1 on missing/stale/orphaned styles; `--write` syncs and
 removes orphans, then re-run `cargo test -p citeme-engine-core --test
 corpus_smoke`.
 
-Last synced: 2026-07-09 (in sync, 59 styles).
+Last synced: 2026-10-05 (in sync, 59 styles).
