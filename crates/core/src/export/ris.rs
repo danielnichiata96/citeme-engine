@@ -1,4 +1,4 @@
-use super::{date_parts, text_field};
+use super::{date_parts, text_field, DateParts};
 use serde_json::Value;
 
 /// CSL-JSON type → RIS TY tag mapping.
@@ -14,8 +14,16 @@ fn csl_type_to_ris(csl_type: &str) -> &'static str {
         "webpage" | "post-weblog" => "ELEC",
         "dataset" => "DATA",
         "software" => "COMP",
+        "patent" => "PAT",
         _ => "JOUR",
     }
+}
+
+/// A date in RIS form, `YYYY/MM/DD/` — empty parts stay empty.
+fn ris_date(date: &DateParts) -> String {
+    let month = date.month.map(|m| format!("{m:02}")).unwrap_or_default();
+    let day = date.day.map(|d| format!("{d:02}")).unwrap_or_default();
+    format!("{}/{month}/{day}/", date.year)
 }
 
 /// Flatten a value into something safe for a single RIS line.
@@ -100,6 +108,19 @@ pub fn csl_json_to_ris(item: &Value) -> String {
         }
     }
 
+    // Editors. For a chapter or a proceedings paper they edit the host book,
+    // which RIS records as the secondary author `A2`; everywhere else `ED`.
+    // Our importer reads both back as `editor`.
+    if let Some(editors) = item["editor"].as_array() {
+        let tag = match csl_type {
+            "chapter" | "paper-conference" => "A2",
+            _ => "ED",
+        };
+        for editor in editors {
+            push_field(&mut lines, tag, &ris_author(editor));
+        }
+    }
+
     // Title
     if let Some(v) = item["title"].as_str() {
         push_field(&mut lines, "TI", v);
@@ -116,12 +137,15 @@ pub fn csl_json_to_ris(item: &Value) -> String {
 
     // Date — RIS spec: PY for year, DA for full date (YYYY/MM/DD/ format)
     if let Some(date) = date_parts(item, "issued").filter(|d| d.year > 0) {
-        let year = date.year;
-        lines.push(format!("PY  - {year}///"));
-        if let Some(m) = date.month {
-            let d_str = date.day.map(|d| format!("{d:02}")).unwrap_or_default();
-            lines.push(format!("DA  - {year}/{m:02}/{d_str}/"));
+        lines.push(format!("PY  - {}///", date.year));
+        if date.month.is_some() {
+            lines.push(format!("DA  - {}", ris_date(&date)));
         }
+    }
+
+    // Access date — `Y2`, as Zotero and EndNote write it for every type.
+    if let Some(date) = date_parts(item, "accessed").filter(|d| d.year > 0) {
+        lines.push(format!("Y2  - {}", ris_date(&date)));
     }
 
     // Volume, issue
@@ -130,6 +154,17 @@ pub fn csl_json_to_ris(item: &Value) -> String {
     }
     if let Some(v) = text_field(item, "issue") {
         push_field(&mut lines, "IS", &v);
+    }
+
+    // CSL `number`: a journal article's article number is `C7`; any other
+    // type's number (report, patent, thesis, …) is the generic `M1`. Not
+    // `SN`, which importers — ours included — read as an ISBN or ISSN.
+    if let Some(v) = text_field(item, "number") {
+        let tag = match csl_type_to_ris(csl_type) {
+            "JOUR" => "C7",
+            _ => "M1",
+        };
+        push_field(&mut lines, tag, &v);
     }
 
     // Pages: split "100-115" into SP/EP
@@ -143,18 +178,12 @@ pub fn csl_json_to_ris(item: &Value) -> String {
         }
     }
 
-    // Identifiers
-    if let Some(v) = item["DOI"].as_str() {
-        push_field(&mut lines, "DO", v);
-    }
-    if let Some(v) = item["URL"].as_str() {
-        push_field(&mut lines, "UR", v);
-    }
-    if let Some(v) = item["ISSN"].as_str() {
-        push_field(&mut lines, "SN", v);
-    }
-    if let Some(v) = item["ISBN"].as_str() {
-        push_field(&mut lines, "SN", v);
+    // Identifiers — string or number, as CSL-JSON allows (`"ISBN":
+    // 9780306406157` was dropped by an `as_str` read).
+    for (key, tag) in [("DOI", "DO"), ("URL", "UR"), ("ISSN", "SN"), ("ISBN", "SN")] {
+        if let Some(v) = text_field(item, key) {
+            push_field(&mut lines, tag, &v);
+        }
     }
 
     // Publisher
@@ -175,15 +204,20 @@ pub fn csl_json_to_ris(item: &Value) -> String {
         push_field(&mut lines, "LA", v);
     }
 
-    // Keywords — split the normalized comma-separated form (which covers
-    // both v1.0.1 string and v1.0.2 array inputs) into one `KW` tag per item.
-    if let Some(kw) = super::bibtex::csl_keyword_as_string(item) {
-        for k in kw.split(',') {
-            let k = k.trim();
-            if !k.is_empty() {
-                push_field(&mut lines, "KW", k);
-            }
-        }
+    // Keywords — one `KW` tag each. A v1.0.2 list already holds them one by
+    // one, and an item may contain commas (MeSH: "Carcinoma, Non-Small-Cell
+    // Lung"), so only the v1.0.1 comma-separated string is split.
+    let keywords: Vec<String> = match &item["keyword"] {
+        Value::Array(list) => list
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect(),
+        Value::String(s) => s.split(',').map(str::to_string).collect(),
+        _ => Vec::new(),
+    };
+    for k in &keywords {
+        push_field(&mut lines, "KW", k);
     }
 
     // ER (end record) — must be last

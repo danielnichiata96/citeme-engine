@@ -370,8 +370,11 @@ fn exports_preserve_non_dropping_particle() {
     );
 
     let yaml = csl_json_array_to_hayagriva(&items);
-    assert!(
-        yaml.contains("da Silva"),
+    let lib = hayagriva::io::from_yaml_str(&yaml).expect("hayagriva YAML must load");
+    let author = &lib.get("p1").unwrap().authors().unwrap()[0];
+    assert_eq!(
+        (author.name.as_str(), author.prefix.as_deref()),
+        ("Silva", Some("da")),
         "hayagriva must keep the particle:\n{yaml}"
     );
 }
@@ -594,4 +597,514 @@ fn thesis_and_report_export_their_institution_field() {
     // Still the publisher after a round trip through our own parser.
     let back = parse_bibtex(&csl_json_to_bibtex(&thesis), &ParseOptions::default());
     assert_eq!(back.entries[0]["publisher"], "Univ X");
+}
+
+// ── Cite keys never collide ──────────────────────────────────────────
+//
+// The `a`/`b` suffix ignored keys already in the file: an item whose own id
+// was `smith2024a` and a repeated `smith2024` both came out `smith2024a`, a
+// repeated key BibTeX rejects. CiteMe passes keys from imported `.bib`
+// files through as ids, so `a`/`b` keys are the common case, not an edge.
+// Classic BibTeX also matches keys without regard to case.
+
+fn cite_keys(bib: &str) -> Vec<String> {
+    bib.lines()
+        .filter_map(|line| line.strip_prefix('@'))
+        .filter_map(|line| {
+            Some(
+                line[line.find('{')? + 1..]
+                    .trim_end_matches(',')
+                    .to_string(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn cite_keys_never_collide_with_a_key_already_in_the_file() {
+    let book = |id: &str, title: &str| json!({"type": "book", "id": id, "title": title});
+    let cases = [
+        (
+            vec![
+                book("smith2024", "A"),
+                book("smith2024a", "B"),
+                book("smith2024", "C"),
+            ],
+            ["smith2024", "smith2024a", "smith2024b"],
+        ),
+        (
+            vec![
+                book("smith2024", "A"),
+                book("smith2024", "B"),
+                book("smith2024a", "C"),
+            ],
+            ["smith2024", "smith2024b", "smith2024a"],
+        ),
+        (
+            vec![
+                book("Smith2024", "A"),
+                book("smith2024", "B"),
+                book("SMITH2024", "C"),
+            ],
+            ["Smith2024", "smith2024a", "SMITH2024b"],
+        ),
+    ];
+    for (items, want) in cases {
+        for (name, out) in [
+            ("bibtex", csl_json_array_to_bibtex(&items)),
+            ("biblatex", csl_json_array_to_biblatex(&items)),
+        ] {
+            assert_eq!(cite_keys(&out), want, "{name}:\n{out}");
+            let back = parse_bibtex(&out, &ParseOptions::default());
+            assert_eq!(
+                (back.entries.len(), back.errors.len()),
+                (3, 0),
+                "{name}:\n{out}"
+            );
+        }
+    }
+}
+
+// ── BibTeX name parts ────────────────────────────────────────────────
+//
+// A name part holding a comma or the word "and" went out bare, and BibTeX
+// reads both as structure: "Procter and Gamble" re-imported as two authors,
+// the family name "Smith, Jones" as family "Smith" with suffix "Jones".
+
+#[test]
+fn name_parts_with_a_comma_or_and_stay_one_name() {
+    let item = json!({"type": "book", "id": "n", "title": "T", "author": [
+        {"family": "Procter and Gamble", "given": "X"},
+        {"family": "Smith, Jones", "given": "Ann"},
+        {"family": "Doe", "given": "Mary AND John"},
+        {"family": "Silva", "given": "Maria", "non-dropping-particle": "da"},
+        {"family": "Anderson", "given": "Andrea"}
+    ]});
+    for (name, bib) in [
+        ("bibtex", csl_json_to_bibtex(&item)),
+        (
+            "biblatex",
+            csl_json_array_to_biblatex(std::slice::from_ref(&item)),
+        ),
+    ] {
+        let back = parse_bibtex(&bib, &ParseOptions::default());
+        assert_eq!(back.errors.len(), 0, "{name}:\n{bib}");
+        let authors = &back.entries[0]["author"];
+        assert_eq!(
+            authors.as_array().map(Vec::len),
+            Some(5),
+            "{name}: one name became several:\n{bib}\n=> {authors}"
+        );
+        assert_eq!(authors[0]["family"], "Procter and Gamble", "{name}:\n{bib}");
+        assert_eq!(authors[1]["family"], "Smith, Jones", "{name}:\n{bib}");
+        assert_eq!(authors[1]["given"], "Ann", "{name}:\n{bib}");
+        assert_eq!(authors[2]["given"], "Mary AND John", "{name}:\n{bib}");
+        assert_eq!(authors[3]["family"], "Silva", "{name}:\n{bib}");
+        assert_eq!(authors[4]["family"], "Anderson", "{name}:\n{bib}");
+    }
+    // "and" inside a word is not the separator; nothing to protect there.
+    let bib = csl_json_to_bibtex(&item);
+    assert!(bib.contains(" and Anderson, Andrea}"), "{bib}");
+}
+
+// ── Numeric ids ──────────────────────────────────────────────────────
+//
+// CSL-JSON allows numeric ids. The exporters read `id` as a string only,
+// so `"id": 7` lost its identity: BibTeX keyed it by author and year, the
+// Hayagriva YAML as `entry`.
+
+#[test]
+fn numeric_ids_keep_their_identity_as_keys() {
+    let item = json!({"type": "book", "id": 7, "title": "T",
+        "author": [{"family": "Smith"}], "issued": {"date-parts": [[2024]]}});
+    let items = std::slice::from_ref(&item);
+    let bib = csl_json_to_bibtex(&item);
+    assert!(bib.starts_with("@book{7,"), "{bib}");
+    let blx = csl_json_array_to_biblatex(items);
+    assert!(blx.starts_with("@book{7,"), "{blx}");
+    let yaml = csl_json_array_to_hayagriva(items);
+    let lib = hayagriva::io::from_yaml_str(&yaml).expect("hayagriva YAML must load");
+    assert!(lib.get("7").is_some(), "{yaml}");
+}
+
+// ── CSL `number` ─────────────────────────────────────────────────────
+//
+// A report or patent number (CSL `number`) reached no exporter. In BibTeX
+// and BibLaTeX it is a report's `number`; an article's `number` is its
+// article number, which both keep in `eid` because `number` is the issue
+// there. RIS has `M1` for it, and `C7` for an article number; Hayagriva
+// reads it from `serial-number.serial`.
+
+#[test]
+fn csl_number_reaches_every_exporter() {
+    let report = json!({"type": "report", "id": "r", "title": "Report", "number": "TR-42",
+        "publisher": "MIT", "issued": {"date-parts": [[2020]]}});
+    let article = json!({"type": "article-journal", "id": "a", "title": "A",
+        "container-title": "PLOS ONE", "issue": "3", "number": "e0123456",
+        "issued": {"date-parts": [[2020]]}});
+    let items = [report.clone(), article.clone()];
+
+    for (name, bib) in [
+        ("bibtex", csl_json_array_to_bibtex(&items)),
+        ("biblatex", csl_json_array_to_biblatex(&items)),
+    ] {
+        assert!(bib.contains("number = {TR-42}"), "{name}:\n{bib}");
+        assert!(bib.contains("number = {3}"), "{name}:\n{bib}");
+        assert!(bib.contains("eid = {e0123456}"), "{name}:\n{bib}");
+        let back = parse_bibtex(&bib, &ParseOptions::default());
+        assert_eq!(
+            (back.entries.len(), back.errors.len()),
+            (2, 0),
+            "{name}:\n{bib}"
+        );
+        assert!(
+            back.entries[0].to_string().contains("TR-42"),
+            "{name}: the report number must survive a round trip:\n{bib}"
+        );
+    }
+
+    let ris = csl_json_to_ris(&report);
+    assert!(ris.contains("M1  - TR-42"), "{ris}");
+    let ris = csl_json_to_ris(&article);
+    assert!(ris.contains("C7  - e0123456"), "{ris}");
+    assert!(ris.contains("IS  - 3"), "{ris}");
+
+    let yaml = csl_json_array_to_hayagriva(&items);
+    let lib = hayagriva::io::from_yaml_str(&yaml).expect("hayagriva YAML must load");
+    assert_eq!(
+        lib.get("r").and_then(|e| e.keyed_serial_number("serial")),
+        Some("TR-42"),
+        "{yaml}"
+    );
+}
+
+// ── Fields CiteMe emits ──────────────────────────────────────────────
+//
+// CiteMe stamps `accessed` on every webpage and sends `event-title` for
+// conference papers; imported `@software` entries carry a `version`. Our
+// importers read BibLaTeX `urldate`/`eventtitle`/`version` and RIS
+// `Y2`/`ED`/`A2`, but no exporter wrote them, so every round trip through a
+// file dropped them.
+
+fn webpage_accessed() -> Value {
+    json!({"type": "webpage", "id": "w", "title": "Page", "URL": "https://x.org",
+        "issued": {"date-parts": [[2020]]}, "accessed": {"date-parts": [[2024, 5, 3]]}})
+}
+
+#[test]
+fn biblatex_round_trips_accessed_event_title_and_version() {
+    let items = vec![
+        webpage_accessed(),
+        json!({"type": "paper-conference", "id": "c", "title": "Paper",
+            "container-title": "Proceedings of X", "event-title": "X 2022",
+            "issued": {"date-parts": [[2022]]}}),
+        json!({"type": "software", "id": "s", "title": "Tool", "version": "1.2.0",
+            "issued": {"date-parts": [[2022]]}}),
+    ];
+    let bib = csl_json_array_to_biblatex(&items);
+    let back = parse_bibtex(&bib, &ParseOptions::default());
+    assert_eq!((back.entries.len(), back.errors.len()), (3, 0), "{bib}");
+    assert_eq!(
+        back.entries[0]["accessed"],
+        json!({"date-parts": [[2024, 5, 3]]}),
+        "{bib}"
+    );
+    assert_eq!(back.entries[1]["event-title"], "X 2022", "{bib}");
+    assert_eq!(back.entries[2]["version"], "1.2.0", "{bib}");
+}
+
+#[test]
+fn bibtex_round_trips_accessed_as_urldate() {
+    // Not a classic BibTeX field, but the one Zotero's BibTeX export writes
+    // and JabRef reads; styles that don't know it ignore it.
+    let bib = csl_json_to_bibtex(&webpage_accessed());
+    assert!(bib.contains("urldate = {2024-05-03}"), "{bib}");
+    let back = parse_bibtex(&bib, &ParseOptions::default());
+    assert_eq!(
+        back.entries[0]["accessed"],
+        json!({"date-parts": [[2024, 5, 3]]}),
+        "{bib}"
+    );
+}
+
+#[test]
+fn ris_round_trips_accessed_and_editors() {
+    let ris = csl_json_to_ris(&webpage_accessed());
+    let back = parse_ris(&ris, &ParseOptions::default());
+    assert_eq!(
+        back.entries[0]["accessed"],
+        json!({"date-parts": [[2024, 5, 3]]}),
+        "{ris}"
+    );
+
+    // A chapter's editors edit the host book: `A2`. Anything else: `ED`.
+    for ty in ["chapter", "book"] {
+        let item = json!({"type": ty, "id": "e", "title": "T",
+            "author": [{"family": "Author", "given": "A"}],
+            "editor": [{"family": "Editor", "given": "E"}, {"literal": "Board of X"}],
+            "container-title": "The Book", "issued": {"date-parts": [[2020]]}});
+        let ris = csl_json_to_ris(&item);
+        let back = parse_ris(&ris, &ParseOptions::default());
+        assert_eq!(
+            back.entries[0]["editor"],
+            json!([{"family": "Editor", "given": "E"}, {"literal": "Board of X"}]),
+            "{ty}:\n{ris}"
+        );
+    }
+}
+
+// ── RIS types, identifiers and keywords ──────────────────────────────
+
+#[test]
+fn ris_exports_patents_as_pat() {
+    let item = json!({"type": "patent", "id": "p", "title": "Widget", "number": "US123"});
+    let ris = csl_json_to_ris(&item);
+    assert!(ris.starts_with("TY  - PAT\n"), "{ris}");
+}
+
+#[test]
+fn ris_keeps_numeric_identifiers() {
+    // `ISBN: 9780306406157` is valid CSL-JSON; RIS read it with `as_str`.
+    let item = json!({"type": "book", "id": "k", "title": "T",
+        "ISBN": 9780306406157u64, "ISSN": 12345678});
+    let ris = csl_json_to_ris(&item);
+    assert!(ris.contains("SN  - 9780306406157"), "{ris}");
+    assert!(ris.contains("SN  - 12345678"), "{ris}");
+}
+
+#[test]
+fn ris_keyword_list_items_stay_whole() {
+    // MeSH headings carry commas. A list item is one keyword; only the
+    // comma-separated string form is split.
+    let item = json!({"type": "article-journal", "id": "k", "title": "T",
+        "keyword": ["Carcinoma, Non-Small-Cell Lung", "Humans"]});
+    let ris = csl_json_to_ris(&item);
+    assert_eq!(ris.matches("KW  - ").count(), 2, "{ris}");
+    assert!(
+        ris.contains("KW  - Carcinoma, Non-Small-Cell Lung\n"),
+        "{ris}"
+    );
+
+    let item = json!({"type": "article-journal", "id": "k", "title": "T", "keyword": "ml, nlp"});
+    assert_eq!(csl_json_to_ris(&item).matches("KW  - ").count(), 2);
+}
+
+// ── Years outside 1000–9999 ──────────────────────────────────────────
+//
+// biblatex writes a BC year as `-0350`: `date = {-350}` re-imported as no
+// date at all, with zero errors. A year past 9999 has no form either format
+// reads back (`year = {20240}` makes our own parser reject the entry), so it
+// is left out rather than written unreadable.
+
+#[test]
+fn bc_and_five_digit_years_never_export_an_unreadable_date() {
+    for (parts, want) in [
+        (json!([[-350]]), Some(json!([[-350]]))),
+        (json!([[-350, 3]]), Some(json!([[-350, 3]]))),
+        (json!([[50]]), Some(json!([[50]]))),
+        (json!([[20240]]), None),
+    ] {
+        let item =
+            json!({"type": "book", "id": "k", "title": "T", "issued": {"date-parts": parts}});
+        for (name, bib) in [
+            ("bibtex", csl_json_to_bibtex(&item)),
+            (
+                "biblatex",
+                csl_json_array_to_biblatex(std::slice::from_ref(&item)),
+            ),
+        ] {
+            let back = parse_bibtex(&bib, &ParseOptions::default());
+            assert_eq!(
+                (back.entries.len(), back.errors.len()),
+                (1, 0),
+                "{name} {parts}:\n{bib}"
+            );
+            assert_eq!(
+                back.entries[0]
+                    .get("issued")
+                    .map(|d| d["date-parts"].clone()),
+                want,
+                "{name} {parts}:\n{bib}"
+            );
+        }
+    }
+}
+
+// ── Hayagriva YAML must always load ──────────────────────────────────
+//
+// One item hayagriva can't read fails the whole file, so every value that
+// reaches a typed field has to be one it accepts.
+
+/// Load `item` next to a plain one; both must come back.
+fn load_hayagriva(item: Value) -> (hayagriva::Library, String) {
+    let items = vec![json!({"id": "ok", "type": "book", "title": "Fine"}), item];
+    let yaml = csl_json_array_to_hayagriva(&items);
+    let lib = hayagriva::io::from_yaml_str(&yaml)
+        .unwrap_or_else(|e| panic!("hayagriva YAML must load: {e}\n{yaml}"));
+    assert_eq!(lib.len(), 2, "{yaml}");
+    (lib, yaml)
+}
+
+#[test]
+fn hayagriva_persons_load_back_as_the_same_names() {
+    // Persons went out as "Given Family"; hayagriva reads a bare string as
+    // "Family, Given", so "John Smith" came back with no given name, "Maria
+    // da Silva" as family "Silva" with prefix "Maria da", and a literal with
+    // three commas made the whole file fail to load.
+    let (lib, yaml) = load_hayagriva(json!({"id": "k", "type": "book", "title": "T",
+        "author": [
+            {"family": "Smith", "given": "John"},
+            {"family": "King", "given": "Martin Luther", "suffix": "Jr."},
+            {"family": "Silva", "given": "Maria", "non-dropping-particle": "da"},
+            {"literal": "Ministério da Saúde, Secretaria de Atenção à Saúde"},
+            {"literal": "Johnson, Smith, Brown, and Co."},
+            {"given": "Plato"}
+        ],
+        "editor": [{"family": "Doe", "given": "Jane"}]}));
+    let entry = lib.get("k").unwrap();
+    let names = |persons: &[hayagriva::types::Person]| -> Vec<_> {
+        persons
+            .iter()
+            .map(|p| {
+                (
+                    p.name.clone(),
+                    p.given_name.clone(),
+                    p.prefix.clone(),
+                    p.suffix.clone(),
+                )
+            })
+            .collect()
+    };
+    let s = |v: &str| Some(v.to_string());
+    assert_eq!(
+        names(entry.authors().expect("authors")),
+        vec![
+            ("Smith".into(), s("John"), None, None),
+            ("King".into(), s("Martin Luther"), None, s("Jr.")),
+            ("Silva".into(), s("Maria"), s("da"), None),
+            (
+                "Ministério da Saúde, Secretaria de Atenção à Saúde".into(),
+                None,
+                None,
+                None
+            ),
+            ("Johnson, Smith, Brown, and Co.".into(), None, None, None),
+            ("Plato".into(), None, None, None),
+        ],
+        "{yaml}"
+    );
+    assert_eq!(
+        names(entry.editors().expect("editors")),
+        vec![("Doe".into(), s("Jane"), None, None)],
+        "{yaml}"
+    );
+}
+
+#[test]
+fn hayagriva_dates_hayagriva_cannot_read_never_break_the_file() {
+    // hayagriva reads a four-digit year (`800-03` failed the file), a day
+    // that exists in its month (`2019-02-30` failed it), and only a bare
+    // year past 9999.
+    for (parts, want) in [
+        (json!([[800, 3]]), (800, Some(3), None)),
+        (json!([[50]]), (50, None, None)),
+        (json!([[-350]]), (-350, None, None)),
+        (json!([[2019, 2, 30]]), (2019, Some(2), None)),
+        (json!([[2020, 2, 29]]), (2020, Some(2), Some(29))),
+        (json!([[20240, 3]]), (20240, None, None)),
+    ] {
+        let (lib, yaml) = load_hayagriva(
+            json!({"id": "k", "type": "book", "title": "T", "issued": {"date-parts": parts}}),
+        );
+        let date = *lib.get("k").unwrap().date().expect("date kept");
+        assert_eq!(
+            (
+                date.year,
+                date.month.map(|m| m + 1),
+                date.day.map(|d| d + 1)
+            ),
+            want,
+            "{parts}:\n{yaml}"
+        );
+    }
+}
+
+#[test]
+fn hayagriva_text_with_characters_yaml_rejects_round_trips() {
+    // libyaml refuses U+FFFE/U+FFFF anywhere in the stream — escaped, they
+    // load. One such character in one title failed the whole file.
+    for text in [
+        "a\u{FFFE}b",
+        "a\u{FFFF}b",
+        "a\u{7F}b",
+        "a\u{85}b",
+        "a\u{0}b",
+    ] {
+        let (lib, yaml) = load_hayagriva(json!({"id": "k", "type": "book", "title": text,
+            "author": [{"family": text, "given": "J"}], "publisher": text}));
+        let entry = lib.get("k").unwrap();
+        assert_eq!(
+            entry.title().map(|t| t.to_string()).as_deref(),
+            Some(text),
+            "{text:?}:\n{yaml}"
+        );
+        assert_eq!(entry.authors().unwrap()[0].name, text, "{text:?}:\n{yaml}");
+    }
+}
+
+#[test]
+fn hayagriva_urls_hayagriva_cannot_parse_are_left_out() {
+    // hayagriva parses `url` as an absolute URL: "www.example.org/page"
+    // failed the whole file. Guessing a scheme would invent data.
+    for url in [
+        "www.example.org/page",
+        "doi.org/10.1000/xyz",
+        "/papers/1.pdf",
+        "https://exa mple.org/a",
+    ] {
+        let (lib, yaml) =
+            load_hayagriva(json!({"id": "k", "type": "webpage", "title": "T", "URL": url}));
+        assert!(lib.get("k").unwrap().url().is_none(), "{url}:\n{yaml}");
+    }
+    for url in [
+        "https://example.org/a b?c=1&d=2",
+        "mailto:someone@example.org",
+    ] {
+        let (lib, yaml) =
+            load_hayagriva(json!({"id": "k", "type": "webpage", "title": "T", "URL": url}));
+        assert!(lib.get("k").unwrap().url().is_some(), "{url}:\n{yaml}");
+    }
+}
+
+#[test]
+fn hayagriva_keys_never_collide_with_an_explicit_id() {
+    let items = vec![
+        json!({"id": "x", "type": "book", "title": "A"}),
+        json!({"id": "x", "type": "book", "title": "B"}),
+        json!({"id": "x-2", "type": "book", "title": "C"}),
+        json!({"type": "book", "title": "D"}),
+        json!({"type": "book", "title": "E"}),
+    ];
+    let yaml = csl_json_array_to_hayagriva(&items);
+    let lib = hayagriva::io::from_yaml_str(&yaml).expect("hayagriva YAML must load");
+    let keys: Vec<String> = lib.iter().map(|e| e.key().to_string()).collect();
+    assert_eq!(keys, ["x", "x-3", "x-2", "entry", "entry-2"], "{yaml}");
+}
+
+#[test]
+fn hayagriva_key_dedup_is_linear() {
+    // Each id-less item probed `entry`, `entry-2`, … from the start again:
+    // 16,000 of them took 15 s in a release build, 8,000 about 11 s in a
+    // debug one. Linear, this is tens of milliseconds.
+    let items: Vec<Value> = (0..8_000)
+        .map(|_| json!({"type": "book", "title": "T"}))
+        .collect();
+    let start = std::time::Instant::now();
+    let yaml = csl_json_array_to_hayagriva(&items);
+    let elapsed = start.elapsed();
+    assert!(yaml.contains("entry-8000:"), "every item keyed");
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "8,000 keys took {elapsed:?}"
+    );
 }

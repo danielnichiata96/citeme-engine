@@ -1,4 +1,4 @@
-use super::{date_parts, text_field};
+use super::{date_parts, text_field, unique_keys};
 use serde_json::Value;
 
 /// CSL-JSON type → Hayagriva entry type mapping.
@@ -17,35 +17,77 @@ fn csl_type_to_hayagriva(csl_type: &str) -> &'static str {
     }
 }
 
-/// Format an author for Hayagriva YAML.
-/// Hayagriva format: "Given Family" or just "Literal Name"
-fn format_author_yaml(author: &Value) -> String {
-    if let Some(literal) = author["literal"].as_str() {
-        return literal.to_string();
+/// One person as a Hayagriva YAML list item, in dictionary form: `name`
+/// (the family name), `given-name`, `prefix`, `suffix`.
+///
+/// hayagriva reads a bare string as "Family, Given[, Suffix]", so the
+/// "Given Family" strings this used to write came back wrong: "John Smith"
+/// as a family name with no given name, "Maria da Silva" as family "Silva"
+/// with prefix "Maria da", and a literal with three commas failed the whole
+/// file. A literal is the `name` alone; a given name with no family name is
+/// a mononym, which hayagriva keeps in `name` too. `None` for a nameless
+/// person.
+fn person_yaml(person: &Value) -> Option<String> {
+    let part = |key: &str| {
+        person[key]
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    };
+    if let Some(literal) = part("literal") {
+        return Some(format!("    - name: {}", yaml_str(literal)));
     }
-    let family = author["family"].as_str().unwrap_or("");
-    let given = author["given"].as_str().unwrap_or("");
-    // Both particle kinds belong in the rendered name. Reading only
+    let (name, given) = match (part("family"), part("given")) {
+        (Some(family), given) => (family, given),
+        (None, Some(given)) => (given, None),
+        (None, None) => return None,
+    };
+    let mut lines = vec![format!("    - name: {}", yaml_str(name))];
+    if let Some(given) = given {
+        lines.push(format!("      given-name: {}", yaml_str(given)));
+    }
+    // Both particle kinds go in `prefix`, in CSL name order. Reading only
     // `dropping-particle` turned "Maria da Silva" into "Maria Silva".
     let prefix = ["dropping-particle", "non-dropping-particle"]
         .iter()
-        .filter_map(|k| author[*k].as_str())
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
+        .filter_map(|k| part(k))
         .collect::<Vec<_>>()
         .join(" ");
-
-    let mut name = String::new();
-    if !given.is_empty() {
-        name.push_str(given);
-        name.push(' ');
-    }
     if !prefix.is_empty() {
-        name.push_str(&prefix);
-        name.push(' ');
+        lines.push(format!("      prefix: {}", yaml_str(&prefix)));
     }
-    name.push_str(family);
-    name.trim().to_string()
+    if let Some(suffix) = part("suffix") {
+        lines.push(format!("      suffix: {}", yaml_str(suffix)));
+    }
+    Some(lines.join("\n"))
+}
+
+/// A `persons:` block, or nothing when no person has a name.
+fn push_persons(lines: &mut Vec<String>, field: &str, persons: &Value) {
+    let Some(persons) = persons.as_array() else {
+        return;
+    };
+    let items: Vec<String> = persons.iter().filter_map(person_yaml).collect();
+    if !items.is_empty() {
+        lines.push(format!("  {field}:"));
+        lines.extend(items);
+    }
+}
+
+/// `date:` as hayagriva reads it: a four-digit year, signed when negative
+/// (`0800-03`, `-0350`) — `800-03` failed the whole file — and a day only
+/// when its month has it (`date_parts` sees to that). A year past four
+/// digits only loads bare, so it goes without month and day.
+fn hayagriva_date(item: &Value) -> Option<String> {
+    let date = date_parts(item, "issued")?;
+    Some(date.iso().unwrap_or_else(|| date.year.to_string()))
+}
+
+/// Whether hayagriva reads `url` as a URL: it parses an absolute URL, so
+/// "www.example.org/page" or "/papers/1.pdf" failed the whole file. Checked
+/// with hayagriva's own parser, so the answer is the loader's.
+fn is_hayagriva_url(url: &str) -> bool {
+    url.parse::<hayagriva::types::QualifiedUrl>().is_ok()
 }
 
 /// Escape a YAML string value.
@@ -92,7 +134,9 @@ fn is_plain_yaml_safe(s: &str) -> bool {
 
 /// Double-quoted YAML scalar with escapes for backslash, quote, control
 /// chars and newlines (a raw newline inside a double-quoted scalar folds —
-/// content would silently change).
+/// content would silently change). U+FFFE and U+FFFF are escaped too:
+/// libyaml refuses them anywhere in the stream, so one of them in one title
+/// failed the whole file.
 fn yaml_quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -103,7 +147,9 @@ fn yaml_quote(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c if c.is_control() || matches!(c, '\u{FFFE}' | '\u{FFFF}') => {
+                out.push_str(&format!("\\u{:04X}", c as u32))
+            }
             c => out.push(c),
         }
     }
@@ -127,16 +173,16 @@ fn is_language_tag(s: &str) -> bool {
         })
 }
 
-/// Resolve the YAML mapping key for an item: the sanitized `id`, or `entry`
-/// when the id is absent, empty, or sanitizes to nothing.
+/// Resolve the YAML mapping key for an item: the sanitized `id` (a number
+/// is an id too), or `entry` when the id is absent, empty, or sanitizes to
+/// nothing.
 ///
 /// A key must never be empty — `"": {…}` is not a usable entry — and callers
 /// exporting more than one item must disambiguate, because duplicate YAML
 /// keys mean the last one silently wins and the earlier items vanish on load.
 fn resolve_hayagriva_key(item: &Value) -> String {
-    let sanitized: String = item["id"]
-        .as_str()
-        .unwrap_or("")
+    let sanitized: String = text_field(item, "id")
+        .unwrap_or_default()
         .chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' || c == '_' {
@@ -175,35 +221,11 @@ pub(crate) fn csl_json_to_hayagriva_with_key(item: &Value, key: &str) -> String 
         lines.push(format!("  title: {}", yaml_str(title)));
     }
 
-    // Authors
-    if let Some(authors) = item["author"].as_array() {
-        if !authors.is_empty() {
-            lines.push("  author:".to_string());
-            for author in authors {
-                lines.push(format!("    - {}", yaml_str(&format_author_yaml(author))));
-            }
-        }
-    }
+    push_persons(&mut lines, "author", &item["author"]);
+    push_persons(&mut lines, "editor", &item["editor"]);
 
-    // Editors
-    if let Some(editors) = item["editor"].as_array() {
-        if !editors.is_empty() {
-            lines.push("  editor:".to_string());
-            for editor in editors {
-                lines.push(format!("    - {}", yaml_str(&format_author_yaml(editor))));
-            }
-        }
-    }
-
-    // Date
-    if let Some(date) = date_parts(item, "issued").filter(|d| d.year > 0) {
-        let year = date.year;
-        let date_str = match (date.month, date.day) {
-            (Some(m), Some(d)) => format!("{year}-{m:02}-{d:02}"),
-            (Some(m), None) => format!("{year}-{m:02}"),
-            _ => format!("{year}"),
-        };
-        lines.push(format!("  date: {date_str}"));
+    if let Some(date) = hayagriva_date(item) {
+        lines.push(format!("  date: {date}"));
     }
 
     // Parent (container/journal)
@@ -243,30 +265,27 @@ pub(crate) fn csl_json_to_hayagriva_with_key(item: &Value, key: &str) -> String 
         }
     }
 
-    // Serial-number (identifiers nested under serial-number:)
-    let mut serial_fields: Vec<String> = Vec::new();
-    if let Some(v) = item["DOI"].as_str() {
-        serial_fields.push(format!("    doi: {}", yaml_str(v)));
-    }
-    if let Some(v) = item["ISBN"].as_str() {
-        serial_fields.push(format!("    isbn: {}", yaml_str(v)));
-    }
-    if let Some(v) = item["ISSN"].as_str() {
-        serial_fields.push(format!("    issn: {}", yaml_str(v)));
-    }
-    if let Some(v) = text_field(item, "PMID") {
-        serial_fields.push(format!("    pmid: {}", yaml_str(&v)));
-    }
-    if let Some(v) = text_field(item, "PMCID") {
-        serial_fields.push(format!("    pmcid: {}", yaml_str(&v)));
-    }
+    // Serial-number (identifiers nested under serial-number:), string or
+    // number. CSL `number` (a report or patent number) is the `serial` key,
+    // where hayagriva's CSL renderer looks for it.
+    let serial_fields: Vec<String> = [
+        ("DOI", "doi"),
+        ("ISBN", "isbn"),
+        ("ISSN", "issn"),
+        ("PMID", "pmid"),
+        ("PMCID", "pmcid"),
+        ("number", "serial"),
+    ]
+    .iter()
+    .filter_map(|(csl, key)| text_field(item, csl).map(|v| format!("    {key}: {}", yaml_str(&v))))
+    .collect();
     if !serial_fields.is_empty() {
         lines.push("  serial-number:".to_string());
         lines.extend(serial_fields);
     }
 
-    // URL (separate from serial-number)
-    if let Some(v) = item["URL"].as_str() {
+    // URL (separate from serial-number) — only one hayagriva can parse.
+    if let Some(v) = item["URL"].as_str().filter(|v| is_hayagriva_url(v)) {
         lines.push(format!("  url: {}", yaml_str(v)));
     }
 
@@ -299,20 +318,16 @@ pub(crate) fn csl_json_to_hayagriva_with_key(item: &Value, key: &str) -> String 
 pub fn csl_json_array_to_hayagriva(items: &[Value]) -> String {
     // Keys must be unique across the file: items with no `id` all resolved to
     // the literal `entry`, so exporting three of them produced one entry and
-    // silently dropped two on load.
-    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // silently dropped two on load. Repeats become `entry-2`, `entry-3`, …
+    let keys = unique_keys(
+        items.iter().map(resolve_hayagriva_key).collect(),
+        |base, n| format!("{base}-{}", n + 1),
+        str::to_string,
+    );
     let mut out = items
         .iter()
-        .map(|item| {
-            let base = resolve_hayagriva_key(item);
-            let mut key = base.clone();
-            let mut n = 1;
-            while !used.insert(key.clone()) {
-                n += 1;
-                key = format!("{base}-{n}");
-            }
-            csl_json_to_hayagriva_with_key(item, &key)
-        })
+        .zip(&keys)
+        .map(|(item, key)| csl_json_to_hayagriva_with_key(item, key))
         .collect::<Vec<_>>()
         .join("\n\n");
     out.push('\n');
@@ -347,9 +362,12 @@ mod tests {
             yaml.contains("title: A Study of Something"),
             "should have title: {yaml}"
         );
-        assert!(yaml.contains("- John Smith"), "should have author: {yaml}");
         assert!(
-            yaml.contains("- Jane Doe"),
+            yaml.contains("    - name: Smith\n      given-name: John\n"),
+            "should have author in dictionary form: {yaml}"
+        );
+        assert!(
+            yaml.contains("    - name: Doe\n      given-name: Jane\n"),
             "should have second author: {yaml}"
         );
         assert!(
@@ -487,6 +505,36 @@ mod tests {
             yaml.contains("  chapter: \"3\""),
             "should have chapter (quoted numeric): {yaml}"
         );
+    }
+
+    #[test]
+    fn test_yaml_quote_escapes_what_libyaml_refuses() {
+        assert_eq!(yaml_quote("a\u{FFFE}b\u{FFFF}"), "\"a\\uFFFEb\\uFFFF\"");
+        assert_eq!(yaml_quote("a\u{7F}\u{85}"), "\"a\\u007F\\u0085\"");
+        // Everything else libyaml reads as written.
+        assert_eq!(yaml_quote("a\u{FEFF}\u{2028}😀"), "\"a\u{FEFF}\u{2028}😀\"");
+    }
+
+    #[test]
+    fn test_person_yaml_dictionary_form() {
+        let lines = |v: Value| person_yaml(&v);
+        assert_eq!(
+            lines(json!({"family": "Silva", "given": "Maria",
+                "dropping-particle": "de", "non-dropping-particle": "da", "suffix": "Neto"})),
+            Some(
+                "    - name: Silva\n      given-name: Maria\n      prefix: de da\n      suffix: Neto"
+                    .into()
+            )
+        );
+        assert_eq!(
+            lines(json!({"literal": "IBGE, Rio"})),
+            Some("    - name: \"IBGE, Rio\"".into())
+        );
+        assert_eq!(
+            lines(json!({"given": "Plato"})),
+            Some("    - name: Plato".into())
+        );
+        assert_eq!(lines(json!({"family": " ", "given": ""})), None);
     }
 
     #[test]

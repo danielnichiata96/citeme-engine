@@ -1,8 +1,8 @@
 use super::bibtex::{
-    csl_keyword_as_string, disambiguate_keys, escape_bibtex, format_authors, push_eprint,
-    push_escaped, push_verbatim, resolve_key,
+    csl_keyword_as_string, disambiguate_keys, escape_bibtex, format_authors, number_and_eid,
+    push_eprint, push_escaped, push_verbatim, resolve_key,
 };
-use super::{date_parts, text_field};
+use super::{iso_date, text_field};
 use serde_json::Value;
 
 /// CSL-JSON type → BibLaTeX entry type mapping.
@@ -26,23 +26,6 @@ fn csl_type_to_biblatex(csl_type: &str) -> &'static str {
         "patent" => "patent",
         _ => "misc",
     }
-}
-
-/// Format a date from CSL `issued.date-parts` as ISO 8601 (YYYY, YYYY-MM, YYYY-MM-DD).
-///
-/// BibLaTeX ≥ v3.5 canonicalized on `date` (ISO 8601); `year`/`month`/`day`
-/// are now deprecated aliases. Biber requires ISO form.
-fn format_biblatex_date(item: &Value) -> Option<String> {
-    // `date_parts` drops out-of-range month/day rather than letting malformed
-    // EDTF like `2024-999` through. Biber rejects those; fall back to lower
-    // precision.
-    let date = date_parts(item, "issued")?;
-    let year = date.year;
-    Some(match (date.month, date.day) {
-        (Some(m), Some(d)) => format!("{year:04}-{m:02}-{d:02}"),
-        (Some(m), None) => format!("{year:04}-{m:02}"),
-        _ => format!("{year:04}"),
-    })
 }
 
 /// Convert a CSL-JSON item to a BibLaTeX entry string.
@@ -86,15 +69,21 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
         fields.push(format!("  {field_name} = {{{}}}", escape_bibtex(container)));
     }
 
-    // Unified ISO `date`. No separate `year`/`month`/`day`.
-    if let Some(d) = format_biblatex_date(item) {
+    // Unified ISO `date` (BibLaTeX ≥ 3.5 canonicalized on it; `year`/`month`/
+    // `day` are deprecated aliases and Biber wants ISO form). `date_parts`
+    // drops an out-of-range month or day rather than letting malformed EDTF
+    // like `2024-999` through, and a BC year is written `-0350`: `-350` read
+    // back as no date at all, with no error.
+    if let Some(d) = iso_date(item, "issued") {
         fields.push(format!("  date = {{{d}}}"));
     }
 
     // Volume / issue / pages — escaped like every other value (see bibtex.rs)
+    let (number, eid) = number_and_eid(item, bib_type == "article");
     push_escaped(&mut fields, "volume", text_field(item, "volume"));
-    push_escaped(&mut fields, "number", text_field(item, "issue"));
+    push_escaped(&mut fields, "number", number);
     push_escaped(&mut fields, "pages", text_field(item, "page"));
+    push_escaped(&mut fields, "eid", eid);
 
     // Publisher / location (canonical; `address` is a legacy alias in
     // BibLaTeX). Theses and reports name their institution in `institution`;
@@ -115,9 +104,16 @@ pub(crate) fn csl_json_to_biblatex_with_key(item: &Value, key: &str) -> String {
         push_escaped(&mut fields, "type", text_field(item, "genre"));
     }
 
+    // Event and version: CiteMe sends `event-title` for conference papers and
+    // imported `@software` entries carry a `version`; our own importer reads
+    // both back, but no exporter wrote them.
+    push_escaped(&mut fields, "eventtitle", text_field(item, "event-title"));
+    push_escaped(&mut fields, "version", text_field(item, "version"));
+
     // Identifiers
     push_verbatim(&mut fields, "doi", text_field(item, "DOI"));
     push_verbatim(&mut fields, "url", text_field(item, "URL"));
+    push_escaped(&mut fields, "urldate", iso_date(item, "accessed"));
     push_escaped(&mut fields, "isbn", text_field(item, "ISBN"));
     push_escaped(&mut fields, "issn", text_field(item, "ISSN"));
 

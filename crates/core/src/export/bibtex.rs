@@ -1,4 +1,4 @@
-use super::{date_parts, text_field};
+use super::{date_parts, iso_date, text_field, unique_keys};
 use serde_json::Value;
 
 /// Whether a thesis genre names a master's degree ("Master's thesis",
@@ -65,6 +65,24 @@ pub(crate) fn generate_key(item: &Value) -> String {
     format!("{}{}", clean_author, year)
 }
 
+/// Escape one part of a name, bracing it when BibTeX would read it as
+/// structure: a comma splits a name into family/suffix/given, and the word
+/// "and" (any case) splits the list into names. Bare, "Procter and Gamble"
+/// re-imported as two authors and the family "Smith, Jones" as "Smith"
+/// with a suffix.
+fn name_part(part: &str) -> String {
+    let escaped = escape_bibtex(part);
+    let structural = part.contains(',')
+        || part
+            .split_whitespace()
+            .any(|word| word.eq_ignore_ascii_case("and"));
+    if structural {
+        format!("{{{escaped}}}")
+    } else {
+        escaped
+    }
+}
+
 /// Format CSL-JSON author array as BibTeX author string.
 /// "Last, First and Last2, First2"
 pub(crate) fn format_authors(authors: &[Value]) -> String {
@@ -77,9 +95,9 @@ pub(crate) fn format_authors(authors: &[Value]) -> String {
                 // Every part is escaped: an unescaped `}` in a family name used
                 // to close the field and let the rest of the value open a
                 // second entry, corrupting the file without raising anything.
-                let family = escape_bibtex(a["family"].as_str().unwrap_or(""));
-                let given = escape_bibtex(a["given"].as_str().unwrap_or(""));
-                let suffix = escape_bibtex(a["suffix"].as_str().unwrap_or(""));
+                let family = name_part(a["family"].as_str().unwrap_or(""));
+                let given = name_part(a["given"].as_str().unwrap_or(""));
+                let suffix = name_part(a["suffix"].as_str().unwrap_or(""));
                 // CSL name order is: given · dropping · non-dropping · family.
                 // Reading only `dropping-particle` silently lost the "da" in
                 // "Maria da Silva" — the form CiteMe actually emits.
@@ -88,7 +106,7 @@ pub(crate) fn format_authors(authors: &[Value]) -> String {
                     .filter_map(|k| a[*k].as_str())
                     .map(str::trim)
                     .filter(|p| !p.is_empty())
-                    .map(escape_bibtex)
+                    .map(name_part)
                     .collect::<Vec<_>>()
                     .join(" ");
 
@@ -208,15 +226,30 @@ fn sanitize_key(raw: &str) -> String {
 
 /// Resolve a cite key from a CSL-JSON item: use explicit `id` if present
 /// (sanitized), else derive one via `generate_key`. Ids with no alphanumeric
-/// content at all fall back to the derived key. Callers that need dedup
-/// across an array should use `csl_json_to_bibtex_with_key` with their own
-/// key.
+/// content at all fall back to the derived key. A numeric id (valid
+/// CSL-JSON) is a key like any other — read as a string only, `"id": 7`
+/// lost its identity to the author-year key. Callers that need dedup across
+/// an array should use `csl_json_to_bibtex_with_key` with their own key.
 pub(crate) fn resolve_key(item: &Value) -> String {
-    item["id"]
-        .as_str()
-        .map(sanitize_key)
+    text_field(item, "id")
+        .map(|id| sanitize_key(&id))
         .filter(|k| k.chars().any(|c| c.is_ascii_alphanumeric()))
         .unwrap_or_else(|| generate_key(item))
+}
+
+/// BibTeX has one `number` field: an article's issue, but a report's or a
+/// patent's own number. An article's CSL `number` is its article number,
+/// which BibTeX and BibLaTeX styles read from `eid`. Returns the values for
+/// `number` and `eid`; a non-article with both an issue and a number keeps
+/// the number, the one its entry type means.
+pub(crate) fn number_and_eid(item: &Value, is_article: bool) -> (Option<String>, Option<String>) {
+    let issue = text_field(item, "issue");
+    let number = text_field(item, "number");
+    if is_article {
+        (issue, number)
+    } else {
+        (number.or(issue), None)
+    }
 }
 
 /// Convert a CSL-JSON item to a BibTeX entry string.
@@ -265,8 +298,10 @@ pub(crate) fn csl_json_to_bibtex_with_key(item: &Value, key: &str) -> String {
     }
 
     // Year + month. BibTeX tradition: `month = mar` (3-letter lowercase macro,
-    // no braces). Never numeric. Day is not a canonical BibTeX field.
-    if let Some(date) = date_parts(item, "issued") {
+    // no braces). Never numeric. Day is not a canonical BibTeX field. A year
+    // past four digits is left out: `year = {20240}` makes biblatex reject
+    // the whole entry.
+    if let Some(date) = date_parts(item, "issued").filter(|d| d.iso_year().is_some()) {
         fields.push(format!("  year = {{{}}}", date.year));
         if let Some(m) = date.month {
             const MONTHS: [&str; 12] = [
@@ -279,9 +314,11 @@ pub(crate) fn csl_json_to_bibtex_with_key(item: &Value, key: &str) -> String {
     // Every remaining value is escaped too. Volume, pages and identifiers
     // were once written raw as "simple values"; a `}` in any of them closed
     // the field and the entry re-imported as nothing.
+    let (number, eid) = number_and_eid(item, bib_type == "article");
     push_escaped(&mut fields, "volume", text_field(item, "volume"));
-    push_escaped(&mut fields, "number", text_field(item, "issue"));
+    push_escaped(&mut fields, "number", number);
     push_escaped(&mut fields, "pages", text_field(item, "page"));
+    push_escaped(&mut fields, "eid", eid);
 
     // Publisher. BibTeX styles read `school` for theses and `institution`
     // for tech reports and ignore `publisher` there — the university was
@@ -297,6 +334,9 @@ pub(crate) fn csl_json_to_bibtex_with_key(item: &Value, key: &str) -> String {
     // Identifiers
     push_verbatim(&mut fields, "doi", text_field(item, "DOI"));
     push_verbatim(&mut fields, "url", text_field(item, "URL"));
+    // Access date: not a classic BibTeX field, but the one Zotero's BibTeX
+    // export writes and JabRef reads; styles that don't know it ignore it.
+    push_escaped(&mut fields, "urldate", iso_date(item, "accessed"));
     push_escaped(&mut fields, "isbn", text_field(item, "ISBN"));
     push_escaped(&mut fields, "issn", text_field(item, "ISSN"));
 
@@ -370,28 +410,19 @@ pub fn csl_json_array_to_bibtex(items: &[Value]) -> String {
 
 /// Resolve each item's cite key and append `a`/`b`/`c`/… suffixes on
 /// collisions. Preserved in insertion order: the first occurrence keeps the
-/// bare key, subsequent occurrences get `a`, `b`, `c`, …
+/// bare key, subsequent occurrences get `a`, `b`, `c`, … — skipping any
+/// suffixed key already in the file. Counting suffixes blindly turned
+/// `["smith2024", "smith2024a", "smith2024"]` into two `smith2024a`. Keys
+/// are compared without regard to case, as classic BibTeX compares them.
 ///
 /// Shared with the BibLaTeX exporter so both emit consistent keys when the
 /// same array is exported in multiple formats.
 pub(crate) fn disambiguate_keys(items: &[Value]) -> Vec<String> {
-    use std::collections::HashMap;
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    items
-        .iter()
-        .map(|item| {
-            let base = resolve_key(item);
-            let n = counts.entry(base.clone()).or_insert(0);
-            let out = if *n == 0 {
-                base.clone()
-            } else {
-                let suffix = suffix_for(*n);
-                format!("{base}{suffix}")
-            };
-            *n += 1;
-            out
-        })
-        .collect()
+    unique_keys(
+        items.iter().map(resolve_key).collect(),
+        |base, n| format!("{base}{}", suffix_for(n)),
+        str::to_lowercase,
+    )
 }
 
 /// Alphabetic suffix for the Nth (1-indexed) duplicate: 1→`a`, 2→`b`, …,
@@ -701,6 +732,36 @@ mod tests {
         );
         // But the item-to-key binding is reversed:
         // in `a`, "Early" gets bare `dup`; in `b`, "Late" gets bare `dup`.
+    }
+
+    #[test]
+    fn test_name_part_braces_only_what_bibtex_reads_as_structure() {
+        assert_eq!(name_part("Procter and Gamble"), "{Procter and Gamble}");
+        assert_eq!(name_part("Mary AND John"), "{Mary AND John}");
+        assert_eq!(name_part("Smith, Jones"), "{Smith, Jones}");
+        assert_eq!(name_part("Smith {x}, Jones"), r"{Smith \{x\}, Jones}");
+        assert_eq!(name_part("Anderson"), "Anderson");
+        assert_eq!(name_part("Sandandand"), "Sandandand");
+        assert_eq!(name_part("da"), "da");
+    }
+
+    #[test]
+    fn test_number_and_eid_follow_the_entry_type() {
+        let both = json!({"issue": "3", "number": "e12"});
+        assert_eq!(
+            number_and_eid(&both, true),
+            (Some("3".into()), Some("e12".into()))
+        );
+        assert_eq!(number_and_eid(&both, false), (Some("e12".into()), None));
+        let issue_only = json!({"issue": 4});
+        assert_eq!(number_and_eid(&issue_only, false), (Some("4".into()), None));
+    }
+
+    #[test]
+    fn test_disambiguate_keys_never_reuses_a_key_in_the_file() {
+        let item = |id: &str| json!({"type": "book", "id": id, "title": "T"});
+        let keys = disambiguate_keys(&[item("k"), item("ka"), item("k"), item("K")]);
+        assert_eq!(keys, vec!["k", "ka", "kb", "Kc"]);
     }
 
     #[test]
