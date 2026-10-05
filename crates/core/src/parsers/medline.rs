@@ -62,46 +62,53 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
         // Blank line = record separator
         if line.trim().is_empty() {
             if let Some(record) = current.take() {
-                scanned += 1;
-                if let Some(max) = options.max_entries {
-                    if entries.len() >= max {
-                        return ParseResult {
-                            entries,
-                            errors: vec![],
-                            format: "medline".to_string(),
-                            truncated: true,
-                            scanned_entries: scanned,
-                        };
-                    }
+                if !push_record(&mut entries, record, &mut scanned, options.max_entries) {
+                    return truncated_result(entries, scanned);
                 }
-                entries.push(record.to_csl_json());
             }
             last_tag.clear();
             continue;
         }
 
-        // MEDLINE tags are commonly fixed-width (`TI  - value`), but text
-        // normalizers often collapse the double spaces to `TI - value`.
-        let (tag, value) = if let Some((tag, value)) = parse_tag_line(line) {
-            (tag, value)
-        } else if line.starts_with("      ") {
-            // Continuation line (6+ spaces) — append to last tag
-            (last_tag.clone(), line.trim().to_string())
-        } else {
+        // PubMed indents wrapped lines by six spaces. That check has to come
+        // before tag parsing: a wrapped line opening with "HIV-1" or "IL-6"
+        // otherwise reads as tag "HIV"/"IL", which cuts the field short and
+        // files the rest of it under a tag nobody reads.
+        if line.starts_with("      ") {
+            if let Some(ref mut record) = current {
+                record.continue_field(&last_tag, line.trim());
+            }
             continue;
+        }
+
+        // MEDLINE tags are commonly fixed-width (`TI  - value`), but text
+        // normalizers often collapse the double spaces to `TI - value`, and
+        // may shrink the continuation indent too.
+        let (tag, value) = match parse_tag_line(line) {
+            Some(tag_value) => tag_value,
+            None => {
+                if line.starts_with(char::is_whitespace) {
+                    if let Some(ref mut record) = current {
+                        record.continue_field(&last_tag, line.trim());
+                    }
+                }
+                continue;
+            }
         };
 
-        if tag.is_empty() {
-            continue;
+        // A PMID inside a record that already has one means the blank line
+        // between two records was lost; without this, both merge into one.
+        if tag == "PMID" && current.as_ref().is_some_and(|r| r.pmid.is_some()) {
+            if let Some(record) = current.take() {
+                if !push_record(&mut entries, record, &mut scanned, options.max_entries) {
+                    return truncated_result(entries, scanned);
+                }
+            }
         }
 
-        // Start new record on PMID
-        if tag == "PMID" && current.is_none() {
-            current = Some(MedlineRecord::new());
-        }
-
-        // If no record started yet but we see a TI, start one (some exports lack PMID)
-        if current.is_none() && (tag == "TI" || tag == "FAU" || tag == "AU") {
+        // Start a record on PMID, or on a title/author line for exports
+        // that lack PMID.
+        if current.is_none() && matches!(tag.as_str(), "PMID" | "TI" | "FAU" | "AU") {
             current = Some(MedlineRecord::new());
         }
 
@@ -115,12 +122,7 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
     // Handle last record (no trailing blank line)
     let mut truncated = false;
     if let Some(record) = current.take() {
-        scanned += 1;
-        if options.max_entries.is_none_or(|max| entries.len() < max) {
-            entries.push(record.to_csl_json());
-        } else {
-            truncated = true;
-        }
+        truncated = !push_record(&mut entries, record, &mut scanned, options.max_entries);
     }
 
     ParseResult {
@@ -132,8 +134,40 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
     }
 }
 
+/// Count a finished record and keep it unless `max_entries` is reached.
+/// Returns `false` when the record was dropped for the limit.
+fn push_record(
+    entries: &mut Vec<Value>,
+    record: MedlineRecord,
+    scanned: &mut usize,
+    max_entries: Option<usize>,
+) -> bool {
+    *scanned += 1;
+    if max_entries.is_some_and(|max| entries.len() >= max) {
+        return false;
+    }
+    entries.push(record.to_csl_json());
+    true
+}
+
+fn truncated_result(entries: Vec<Value>, scanned: usize) -> ParseResult {
+    ParseResult {
+        entries,
+        errors: vec![],
+        format: "medline".to_string(),
+        truncated: true,
+        scanned_entries: scanned,
+    }
+}
+
 fn parse_tag_line(line: &str) -> Option<(String, String)> {
     let (raw_tag, raw_value) = line.split_once('-')?;
+    // Real tag lines put a space after the dash ("TI  - x", "PMID- 1") or end
+    // there. Requiring it keeps a de-indented wrapped line like
+    // "HIV-1 infection" from reading as tag "HIV".
+    if !(raw_value.is_empty() || raw_value.starts_with(char::is_whitespace)) {
+        return None;
+    }
     let tag = raw_tag.trim();
     if !(2..=4).contains(&tag.len()) {
         return None;
@@ -147,11 +181,87 @@ fn parse_tag_line(line: &str) -> Option<(String, String)> {
     Some((tag.to_string(), raw_value.trim_start().to_string()))
 }
 
+/// One author slot, in source order.
+///
+/// PubMed writes each person as `FAU` (full) followed by its `AU`
+/// abbreviation; records indexed before 2002 carry only `AU`. `CN` is a
+/// corporate author and takes its place in the list like any other.
+enum MedlineAuthor {
+    Person {
+        full: Option<String>,
+        abbreviated: Option<String>,
+    },
+    Corporate(String),
+}
+
+impl MedlineAuthor {
+    fn to_csl_json(&self) -> Option<Value> {
+        match self {
+            MedlineAuthor::Person {
+                full: Some(fau), ..
+            } => {
+                // FAU format: "Last, First Middle"
+                let parts: Vec<&str> = fau.splitn(2, ',').collect();
+                Some(if parts.len() == 2 {
+                    json!({"family": parts[0].trim(), "given": parts[1].trim()})
+                } else {
+                    json!({"literal": fau})
+                })
+            }
+            MedlineAuthor::Person {
+                full: None,
+                abbreviated: Some(au),
+            } => Some(abbreviated_author(au)),
+            MedlineAuthor::Person { .. } => None,
+            MedlineAuthor::Corporate(name) => Some(json!({"literal": name})),
+        }
+    }
+}
+
+/// `AU` form: "Smith JA" → family "Smith", given "J. A.". The trailing
+/// token is the initials; anything before it (particles included) is the
+/// family name. Initials are spelled out with periods because CSL
+/// processors initialize per word — a bare "JA" would render as "J.".
+fn abbreviated_author(au: &str) -> Value {
+    match au.rsplit_once(' ') {
+        Some((family, initials))
+            if !initials.is_empty() && initials.chars().all(|c| c.is_uppercase()) =>
+        {
+            let given = initials
+                .chars()
+                .map(|c| format!("{c}."))
+                .collect::<Vec<_>>()
+                .join(" ");
+            json!({"family": family.trim(), "given": given})
+        }
+        _ => json!({"literal": au}),
+    }
+}
+
+fn push_wrapped(target: &mut String, text: &str) {
+    target.push(' ');
+    target.push_str(text);
+}
+
+/// Append a wrapped line's text to a single-valued field.
+fn append_to(slot: &mut Option<String>, text: &str) {
+    match slot {
+        Some(existing) => push_wrapped(existing, text),
+        None => *slot = Some(text.to_string()),
+    }
+}
+
+fn append_to_last(list: &mut [String], text: &str) {
+    if let Some(last) = list.last_mut() {
+        push_wrapped(last, text);
+    }
+}
+
 /// Internal record accumulator.
 struct MedlineRecord {
     pmid: Option<String>,
     title: Option<String>,
-    authors: Vec<String>,         // FAU names: "Last, First Middle"
+    authors: Vec<MedlineAuthor>,
     date: Option<String>,         // DP: "2024 Mar" or "2024"
     journal_abbr: Option<String>, // TA
     journal_full: Option<String>, // JT
@@ -192,16 +302,26 @@ impl MedlineRecord {
     fn add_field(&mut self, tag: &str, value: &str) {
         match tag {
             "PMID" => self.pmid = Some(value.to_string()),
-            "TI" => {
-                // TI can span multiple continuation lines
-                if let Some(ref mut t) = self.title {
-                    t.push(' ');
-                    t.push_str(value);
-                } else {
-                    self.title = Some(value.to_string());
-                }
-            }
-            "FAU" => self.authors.push(value.to_string()),
+            // A repeated TI/AB continues the field rather than replacing it.
+            "TI" => append_to(&mut self.title, value),
+            "FAU" => self.authors.push(MedlineAuthor::Person {
+                full: Some(value.to_string()),
+                abbreviated: None,
+            }),
+            "AU" => match self.authors.last_mut() {
+                // The abbreviation of the FAU just before it, not a new author.
+                Some(MedlineAuthor::Person {
+                    full: Some(_),
+                    abbreviated: slot @ None,
+                }) => *slot = Some(value.to_string()),
+                _ => self.authors.push(MedlineAuthor::Person {
+                    full: None,
+                    abbreviated: Some(value.to_string()),
+                }),
+            },
+            "CN" => self
+                .authors
+                .push(MedlineAuthor::Corporate(value.to_string())),
             "DP" => self.date = Some(value.to_string()),
             "TA" => self.journal_abbr = Some(value.to_string()),
             "JT" => self.journal_full = Some(value.to_string()),
@@ -214,14 +334,7 @@ impl MedlineRecord {
                     self.doi = Some(value.trim_end_matches("[doi]").trim().to_string());
                 }
             }
-            "AB" => {
-                if let Some(ref mut a) = self.abstract_text {
-                    a.push(' ');
-                    a.push_str(value);
-                } else {
-                    self.abstract_text = Some(value.to_string());
-                }
-            }
+            "AB" => append_to(&mut self.abstract_text, value),
             "LA" => self.language = Some(value.to_string()),
             "PT" => self.pub_types.push(value.to_string()),
             "IS" => {
@@ -234,6 +347,41 @@ impl MedlineRecord {
             "PL" => self.place = Some(value.to_string()),
             "OT" => self.keywords.push(value.to_string()),
             _ => {} // Skip unknown tags
+        }
+    }
+
+    /// Append a wrapped line to whatever field `tag` last wrote. Routing the
+    /// line back through `add_field` would *replace* single-valued fields
+    /// (the journal became its last fragment) and *add* list items (a
+    /// wrapped name became a second author).
+    fn continue_field(&mut self, tag: &str, text: &str) {
+        match tag {
+            "TI" => append_to(&mut self.title, text),
+            "AB" => append_to(&mut self.abstract_text, text),
+            "JT" => append_to(&mut self.journal_full, text),
+            "TA" => append_to(&mut self.journal_abbr, text),
+            "PL" => append_to(&mut self.place, text),
+            "DP" => append_to(&mut self.date, text),
+            "PT" => append_to_last(&mut self.pub_types, text),
+            "OT" => append_to_last(&mut self.keywords, text),
+            "FAU" | "AU" | "CN" => match (tag, self.authors.last_mut()) {
+                (
+                    "FAU",
+                    Some(MedlineAuthor::Person {
+                        full: Some(name), ..
+                    }),
+                )
+                | (
+                    "AU",
+                    Some(MedlineAuthor::Person {
+                        abbreviated: Some(name),
+                        ..
+                    }),
+                )
+                | ("CN", Some(MedlineAuthor::Corporate(name))) => push_wrapped(name, text),
+                _ => {}
+            },
+            _ => {} // Identifiers and unknown tags don't wrap meaningfully
         }
     }
 
@@ -255,37 +403,19 @@ impl MedlineRecord {
             obj.insert("title".into(), json!(title));
         }
 
-        // Authors (from FAU — full author names)
-        if !self.authors.is_empty() {
-            let names: Vec<Value> = self
-                .authors
-                .iter()
-                .map(|fau| {
-                    // FAU format: "Last, First Middle"
-                    let parts: Vec<&str> = fau.splitn(2, ',').collect();
-                    if parts.len() == 2 {
-                        json!({"family": parts[0].trim(), "given": parts[1].trim()})
-                    } else {
-                        json!({"literal": fau})
-                    }
-                })
-                .collect();
+        // Authors — full names when present, abbreviations otherwise
+        let names: Vec<Value> = self
+            .authors
+            .iter()
+            .filter_map(MedlineAuthor::to_csl_json)
+            .collect();
+        if !names.is_empty() {
             obj.insert("author".into(), json!(names));
         }
 
-        // Date from DP: "2024 Mar" or "2024"
-        if let Some(ref dp) = self.date {
-            let parts: Vec<&str> = dp.split_whitespace().collect();
-            if let Some(year_str) = parts.first() {
-                if let Ok(year) = year_str.parse::<i32>() {
-                    let month = parts.get(1).and_then(|m| month_to_number(m));
-                    let mut date_parts: Vec<i32> = vec![year];
-                    if let Some(m) = month {
-                        date_parts.push(m);
-                    }
-                    obj.insert("issued".into(), json!({"date-parts": [date_parts]}));
-                }
-            }
+        // Date from DP: "2024 Mar 15", "2024 Mar", "2023 Jan-Feb" or "2024"
+        if let Some(date_parts) = self.date.as_deref().and_then(parse_dp) {
+            obj.insert("issued".into(), json!({"date-parts": [date_parts]}));
         }
 
         // Journal: prefer full title, fallback to abbreviation
@@ -350,6 +480,29 @@ impl MedlineRecord {
         }
         "article-journal" // Default for MEDLINE
     }
+}
+
+/// `DP` → CSL date-parts. The day is kept when it is a valid day of a
+/// known month; a month range ("Jan-Feb") keeps its first month; seasons
+/// and other text fall back to the year.
+fn parse_dp(dp: &str) -> Option<Vec<i32>> {
+    let mut parts = dp.split_whitespace();
+    let year = parts.next()?.parse::<i32>().ok()?;
+    let mut date_parts = vec![year];
+    let month = parts
+        .next()
+        .and_then(|m| month_to_number(m.split('-').next().unwrap_or(m)));
+    if let Some(m) = month {
+        date_parts.push(m);
+        if let Some(day) = parts
+            .next()
+            .and_then(|d| d.parse::<i32>().ok())
+            .filter(|d| (1..=31).contains(d))
+        {
+            date_parts.push(day);
+        }
+    }
+    Some(date_parts)
 }
 
 /// Convert 3-letter month abbreviation to number.
@@ -459,6 +612,104 @@ LID - 10.1038/s41598-026-40798-8 [doi]
         let result = parse_medline(input, &opts);
         assert_eq!(result.entries.len(), 1);
         assert!(result.truncated);
+    }
+
+    #[test]
+    fn test_parse_medline_wrapped_lines_continue_their_field() {
+        // PubMed wraps at ~80 columns with a six-space indent. A wrapped line
+        // opening with "HIV-1" used to parse as tag "HIV", truncating the
+        // title and filing the rest under that bogus tag; a wrapped `JT`
+        // re-set the journal to its last fragment — PNAS came out as
+        // "America".
+        let input = "PMID- 1\n\
+TI  - Effects of antiretroviral therapy on outcomes in patients with\n      \
+HIV-1 infection and tuberculosis coinfection in rural settings.\n\
+FAU - Smith, John\n\
+JT  - Proceedings of the National Academy of Sciences of the United States of\n      \
+America\n\
+TA  - Proc Natl Acad Sci U S A\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        let first = &result.entries[0];
+        assert_eq!(
+            first["title"],
+            "Effects of antiretroviral therapy on outcomes in patients with HIV-1 \
+             infection and tuberculosis coinfection in rural settings."
+        );
+        assert_eq!(
+            first["container-title"],
+            "Proceedings of the National Academy of Sciences of the United States of America"
+        );
+        assert_eq!(first["container-title-short"], "Proc Natl Acad Sci U S A");
+    }
+
+    #[test]
+    fn test_parse_medline_dash_inside_value_is_not_a_tag() {
+        // A de-indented wrapped line must not become a tag either: real tag
+        // lines always put a space (or end of line) after the dash.
+        assert_eq!(parse_tag_line("HIV-1 infection and tuberculosis"), None);
+        assert_eq!(parse_tag_line("IL-6 levels"), None);
+        assert_eq!(
+            parse_tag_line("PMID- 123"),
+            Some(("PMID".to_string(), "123".to_string()))
+        );
+        assert_eq!(
+            parse_tag_line("TI  - Long-term outcomes"),
+            Some(("TI".to_string(), "Long-term outcomes".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_medline_abbreviated_authors_when_no_fau() {
+        // Records indexed before 2002 carry only `AU` ("Smith JA"); reading
+        // only `FAU` imported them with no authors at all.
+        let input = "PMID- 2\nTI  - Old paper.\nAU  - Smith JA\nAU  - van der Berg K\nCN  - WHO Study Group\nDP  - 1985\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        let authors = result.entries[0]["author"].as_array().expect("authors");
+        assert_eq!(authors.len(), 3, "{authors:?}");
+        assert_eq!(authors[0]["family"], "Smith");
+        assert_eq!(authors[0]["given"], "J. A.");
+        assert_eq!(authors[1]["family"], "van der Berg");
+        assert_eq!(authors[1]["given"], "K.");
+        assert_eq!(authors[2]["literal"], "WHO Study Group");
+    }
+
+    #[test]
+    fn test_parse_medline_full_names_win_and_keep_order() {
+        // With FAU present, each AU is the abbreviation of the FAU before it
+        // and must not add a second copy of the author.
+        let input = "PMID- 3\nFAU - Smith, John A\nAU  - Smith JA\nCN  - Trial Group\nFAU - Doe, Jane\nAU  - Doe J\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        let authors = result.entries[0]["author"].as_array().expect("authors");
+        assert_eq!(authors.len(), 3, "{authors:?}");
+        assert_eq!(authors[0]["given"], "John A");
+        assert_eq!(authors[1]["literal"], "Trial Group");
+        assert_eq!(authors[2]["family"], "Doe");
+    }
+
+    #[test]
+    fn test_parse_medline_pmid_starts_a_new_record() {
+        // Records pasted without their blank-line separators used to merge:
+        // one entry, the second PMID, both titles concatenated.
+        let input = "PMID- 3\nTI  - First.\nFAU - A, B\nPMID- 4\nTI  - Second.\nFAU - C, D\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        assert_eq!(result.entries.len(), 2, "{:?}", result.entries);
+        assert_eq!(result.entries[0]["PMID"], "3");
+        assert_eq!(result.entries[0]["title"], "First.");
+        assert_eq!(result.entries[1]["PMID"], "4");
+        assert_eq!(result.entries[1]["author"][0]["family"], "C");
+    }
+
+    #[test]
+    fn test_parse_medline_date_keeps_day_and_first_month_of_range() {
+        let parse = |dp: &str| {
+            let input = format!("PMID- 5\nTI  - T.\nDP  - {dp}\n");
+            parse_medline(&input, &ParseOptions::default()).entries[0]["issued"]["date-parts"][0]
+                .clone()
+        };
+        assert_eq!(parse("2020 Mar 15"), serde_json::json!([2020, 3, 15]));
+        assert_eq!(parse("2023 Jan-Feb"), serde_json::json!([2023, 1]));
+        assert_eq!(parse("2024"), serde_json::json!([2024]));
+        assert_eq!(parse("2024 Mar 99"), serde_json::json!([2024, 3]));
     }
 
     #[test]
