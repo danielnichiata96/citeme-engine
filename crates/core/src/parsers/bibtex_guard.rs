@@ -282,9 +282,12 @@ impl<'a> Guard<'a> {
             return;
         }
         let (span, key) = (e.fields[field].span.clone(), e.fields[field].key.clone());
-        let preview = self.input[e.span.clone()].to_string();
+        // A slice, not a copy: `report` keeps 80 chars of it, and copying the
+        // whole entry per field made one large entry quadratic.
+        let input = self.input;
+        let preview = &input[e.span.clone()];
         self.patch(span, DROPPED_FIELD.to_string());
-        self.report(&preview, format!("{key}: {why} — imported without it"));
+        self.report(preview, format!("{key}: {why} — imported without it"));
     }
 
     /// Check every `@string` name: its definitions must parse, must not
@@ -331,6 +334,7 @@ impl<'a> Guard<'a> {
             let mut d = 1;
             let mut fault = None;
             let mut text = Some(String::new());
+            let mut undefined = Vec::new();
             for &def in &defs {
                 let mut len = 0usize;
                 let mut def_text = Some(String::new());
@@ -347,12 +351,17 @@ impl<'a> Guard<'a> {
                             }
                             (raw.len(), Some(plain_text(raw)))
                         }
-                        Part::Macro(r, _) => match self.macro_info.get(r) {
+                        Part::Macro(r, range) => match self.macro_info.get(r) {
                             Some(used) => {
                                 d = d.max(depth.get(r).copied().unwrap_or(0) + 1);
                                 (used.len, used.text.clone())
                             }
                             None => {
+                                // Bottom-up, so a name used here and not yet
+                                // checked is not defined at all.
+                                if month_name(r).is_none() {
+                                    undefined.push((r.clone(), range.clone()));
+                                }
                                 let word = month_name(r).map_or(r.as_str(), |m| m);
                                 (word.len(), Some(word.to_string()))
                             }
@@ -391,6 +400,20 @@ impl<'a> Guard<'a> {
                     text: Some(String::new()),
                 };
                 d = 1;
+            } else {
+                // An undefined macro inside a definition failed a whole-file
+                // parse per definition, and past `MAX_RETRIES` entries were
+                // read one by one — some dropped, all without inheritance.
+                // Keep the name as text, as a field does.
+                let input = self.input;
+                for (used, range) in undefined {
+                    let source = &input[self.macros[defs[0]].span.clone()];
+                    self.report(
+                        source,
+                        format!("@string {name:?}: unknown @string {used:?}, kept as text"),
+                    );
+                    self.patch(range, format!("{{{used}}}"));
+                }
             }
             depth.insert(name.clone(), d);
             self.macro_info.insert(name.clone(), info);
@@ -428,10 +451,10 @@ impl<'a> Guard<'a> {
             let value = self.macros[d].value.clone();
             self.patch(value, "{}".to_string());
         }
-        let span = self.macros[defs[0]].span.clone();
-        let source = self.input[span].to_string();
+        let input = self.input;
+        let source = &input[self.macros[defs[0]].span.clone()];
         self.report(
-            &source,
+            source,
             format!("@string {name:?} {why}; its uses read as empty"),
         );
     }
@@ -441,6 +464,10 @@ impl<'a> Guard<'a> {
     /// `biblatex` misreads.
     fn check_entries(&mut self) {
         let mut taken: HashSet<String> = HashSet::new();
+        // The next suffix to try, per key: a run of copies of one key probes
+        // each candidate once. Starting again from 2 for every copy was
+        // quadratic — 20,000 copies took 18 s.
+        let mut next_suffix: HashMap<String, usize> = HashMap::new();
         // Each macro use re-parses the macro's text: the total is bounded
         // like the input it came from.
         let mut budget = budget(self.input);
@@ -451,13 +478,13 @@ impl<'a> Guard<'a> {
             // id keeps the one written.
             let key = self.entries[e].key.clone();
             if taken.contains(&key) {
-                let mut n = 2;
+                let n = next_suffix.entry(key.clone()).or_insert(2);
                 let fresh = loop {
                     let candidate = format!("{key}-citeme-{n}");
+                    *n += 1;
                     if !taken.contains(&candidate) {
                         break candidate;
                     }
-                    n += 1;
                 };
                 let span = self.entries[e].key_span.clone();
                 self.patch(span, fresh.clone());
@@ -556,10 +583,11 @@ impl<'a> Guard<'a> {
             }
         }
 
-        let preview = self.input[self.entries[e].span.clone()].to_string();
+        let input = self.input;
+        let preview = &input[self.entries[e].span.clone()];
         for (name, range) in unknown {
             self.report(
-                &preview,
+                preview,
                 format!("{key}: unknown @string {name:?}, kept as text"),
             );
             rewrites.push((range, format!("{{{name}}}")));
@@ -818,8 +846,8 @@ impl<'a> Guard<'a> {
 
     fn remove_entry(&mut self, e: usize, why: &str) {
         let span = self.entries[e].span.clone();
-        let preview = self.input[span.clone()].to_string();
-        self.report(&preview, format!("biblatex parse error: {why}"));
+        let input = self.input;
+        self.report(&input[span.clone()], format!("biblatex parse error: {why}"));
         self.entries[e].removed = true;
         self.patch(span, String::new());
     }

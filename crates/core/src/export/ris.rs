@@ -158,10 +158,12 @@ pub fn csl_json_to_ris(item: &Value) -> String {
 
     // CSL `number`: a journal article's article number is `C7`; any other
     // type's number (report, patent, thesis, …) is the generic `M1`. Not
-    // `SN`, which importers — ours included — read as an ISBN or ISSN.
+    // `SN`, which importers — ours included — read as an ISBN or ISSN. Read
+    // off the CSL type: RIS's `JOUR` is also the fallback for types it has
+    // no tag for, whose numbers aren't article numbers.
     if let Some(v) = text_field(item, "number") {
-        let tag = match csl_type_to_ris(csl_type) {
-            "JOUR" => "C7",
+        let tag = match csl_type {
+            "article-journal" | "article-magazine" | "article-newspaper" => "C7",
             _ => "M1",
         };
         push_field(&mut lines, tag, &v);

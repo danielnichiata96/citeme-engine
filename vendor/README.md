@@ -9,15 +9,18 @@ The crates.io release of [hayagriva](https://github.com/typst/hayagriva)
 - `Cargo.toml`: the `[[bin]]` and `[[test]]` targets are removed — their
   sources (`src/main.rs` is kept but unused, `tests/`) aren't needed to build
   the library, and the test fixtures aren't vendored.
-- `src/csl/mod.rs`, `WritingContext::has_content_since`: the text after an
-  affix was sliced at the affix's byte length. `push_str` may have trimmed the
-  affix's trailing space in between ("punctuation eats spaces"), so the index
-  could fall inside a multibyte character — a panic, which aborts the Wasm
-  instance. Reached by a style prefix ending in a space (`"pp.&#160;"`) and a
-  value opening with punctuation then a multibyte character (`".é"`); the
-  slice now starts at the next character boundary.
+- `src/csl/mod.rs`, `WritingContext::apply_prefix` and `has_content_since`:
+  whether anything followed an affix was decided by slicing the text at the
+  affix's byte length. `push_str` may have trimmed the affix's trailing space
+  in between ("punctuation eats spaces"), so the offset ran into the value:
+  inside a multibyte character it panicked, which aborts the Wasm instance,
+  and past a short value it read the value as empty and dropped it. Both came
+  from a style prefix ending in a space (`"pp.&#160;"`) followed by a value
+  opening with punctuation (`".é"`, `".e"`). The prefix is now measured
+  without its trailing whitespace, and the check counts characters instead
+  of slicing.
 
-`crates/core/tests/format_input.rs` (`a_value_opening_with_punctuation_is_not_a_panic`)
+`crates/core/tests/format_input.rs` (`a_value_opening_with_punctuation_keeps_its_value`)
 and the formatting property in `no_panic_props.rs` fail without the fix.
 
 hayagriva 0.10.1 still has the bug. Delete this directory and the

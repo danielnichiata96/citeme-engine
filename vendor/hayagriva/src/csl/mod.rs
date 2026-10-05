@@ -1851,17 +1851,14 @@ impl WritingContext {
         self.save_to_block();
         let children = self.elem_stack.last();
         let has_content = match children.0.first() {
-            Some(ElemChild::Text(t)) if loc.1 < t.text.len() => {
-                // citeme-engine patch: `push_str` may have trimmed the
-                // prefix's trailing space since `loc.1` measured it
-                // ("punctuation eats spaces"), so `loc.1` can fall inside a
-                // multibyte char of what follows. Start at the next boundary.
-                let start = (loc.1..t.text.len())
-                    .find(|&i| t.text.is_char_boundary(i))
-                    .unwrap_or(t.text.len());
-                t.text[start..].chars().any(|c| !c.is_whitespace())
-            }
-            Some(ElemChild::Text(_)) => false,
+            // citeme-engine patch: no slice at `loc.1`. It is a char
+            // boundary since `apply_prefix` measures the prefix without its
+            // trailing whitespace, but a stale offset must not panic: count
+            // every char that ends past it.
+            Some(ElemChild::Text(t)) => t
+                .text
+                .char_indices()
+                .any(|(i, c)| i + c.len_utf8() > loc.1 && !c.is_whitespace()),
             Some(ElemChild::Elem(e)) => e.has_content(),
             Some(
                 ElemChild::Markup(_)
@@ -1882,7 +1879,12 @@ impl WritingContext {
             self.buf.push_str(prefix);
         };
 
-        (pos, affixes.prefix.as_ref().map(|p| p.len()).unwrap_or_default())
+        // citeme-engine patch: measured without its trailing whitespace,
+        // which `push_str` trims when the next value opens with punctuation
+        // ("punctuation eats spaces"). Measured with it, the offset fell
+        // inside a multibyte char of the value (a panic) or past a short
+        // value, which then read as empty: ".e" after "pp.&#160;" vanished.
+        (pos, affixes.prefix.as_ref().map(|p| p.trim_end().len()).unwrap_or_default())
     }
 
     /// Nest the last subtree into its ancestor. If the `display` argument is

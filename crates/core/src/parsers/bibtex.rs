@@ -426,6 +426,16 @@ fn apply_biblatex_fields(csl: &mut Value, bib_entry: &biblatex::Entry, notes: Op
     );
     insert_string_if_missing(obj, "volume", bib_field(bib_entry, &["volume"]));
     insert_string_if_missing(obj, "issue", bib_field(bib_entry, &["number", "issue"]));
+    // A report's or a patent's `number` is its own number, CSL `number`; it
+    // stays in `issue` too, for readers that only know `issue` (CiteMe's
+    // paper model). An article's own number is `eid`.
+    if matches!(
+        obj.get("type").and_then(Value::as_str),
+        Some("report" | "patent")
+    ) {
+        insert_string_if_missing(obj, "number", bib_field(bib_entry, &["number"]));
+    }
+    insert_string_if_missing(obj, "number", bib_field(bib_entry, &["eid"]));
     insert_string_if_missing(obj, "page", bib_field(bib_entry, &["pages"]));
     insert_string_if_missing(obj, "URL", bib_field(bib_entry, &["url"]));
     insert_string_if_missing(obj, "DOI", bib_field(bib_entry, &["doi"]));
@@ -659,7 +669,8 @@ const DATE_FIELDS: &[&str] = &[
 /// The field a conversion error is about: the one its span falls in — but
 /// biblatex reports some date errors (a day read out of `month`) with a span
 /// relative to the value, so a date error outside the date fields falls
-/// back to them, least significant first.
+/// back to them, least significant first. Any other error with no field at
+/// its span names nothing to drop: the entry fails, with its error.
 fn field_to_drop(entry: &biblatex::Entry, error: &TypeError) -> Option<String> {
     let date_only = matches!(
         error.kind,
@@ -686,7 +697,7 @@ fn field_to_drop(entry: &biblatex::Entry, error: &TypeError) -> Option<String> {
             DATE_FIELDS
                 .iter()
                 .copied()
-                .find(|key| entry.fields.contains_key(*key))
+                .find(|key| date_only && entry.fields.contains_key(*key))
         })
         .map(str::to_string)
 }
@@ -765,6 +776,30 @@ pub fn parse_bibtex(input: &str, options: &ParseOptions) -> ParseResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_conversion_error_outside_every_field_costs_a_date_only_if_it_is_a_date_error() {
+        // A date error biblatex reports with a span relative to the value is
+        // traced back to the date fields; any other error with no field at
+        // its span used to fall back to them too, and the entry then lost its
+        // date without a word.
+        let bibliography =
+            biblatex::Bibliography::parse("@article{k, title = {T}, year = {2020}, month = {5}}")
+                .unwrap();
+        let entry = bibliography.iter().next().unwrap();
+        let outside = |kind| TypeError {
+            span: 10_000..10_001,
+            kind,
+        };
+        assert_eq!(
+            field_to_drop(entry, &outside(TypeErrorKind::UnknownGender)),
+            None
+        );
+        assert_eq!(
+            field_to_drop(entry, &outside(TypeErrorKind::DayOutOfRange)).as_deref(),
+            Some("month")
+        );
+    }
 
     #[test]
     fn test_parse_bibtex_basic() {

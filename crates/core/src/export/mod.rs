@@ -143,7 +143,7 @@ pub(crate) fn iso_date(item: &Value, key: &str) -> Option<String> {
 /// `raw` is free text; only a year-first ISO form ("2018", "2018-07",
 /// "2018-07-15T10:00:00Z") is read. "05/03/2019" is day/month or month/day,
 /// and reading it by position made the year 5.
-fn raw_iso_parts(raw: &str) -> Option<Vec<Option<i64>>> {
+pub(crate) fn raw_iso_parts(raw: &str) -> Option<Vec<Option<i64>>> {
     let date = raw.trim().split(['T', ' ']).next()?;
     let mut parts = date.split('-');
     let year = parts.next()?;

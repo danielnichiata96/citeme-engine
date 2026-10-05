@@ -373,6 +373,9 @@ impl RisRecord {
             "VL" => self.set_value("volume", value),
             "IS" => self.set_value("issue", value),
             "ET" => self.set_value("edition", value),
+            // The item's own number: C7 for an article, M1 for other types,
+            // as the exporter writes them.
+            "C7" | "M1" if !self.fields.contains_key("number") => self.set_value("number", value),
             "SP" => {
                 self.start_page = Some(value.to_string());
                 Slot::None

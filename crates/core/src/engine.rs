@@ -412,11 +412,7 @@ impl CitationEngine {
 /// CSL-JSON and keep their identity, as strings.
 fn batch_entries(items: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, Vec<usize>) {
     fn own_id(item: &serde_json::Value) -> Option<String> {
-        match &item["id"] {
-            serde_json::Value::String(s) if !s.is_empty() => Some(s.clone()),
-            serde_json::Value::Number(n) => Some(n.to_string()),
-            _ => None,
-        }
+        crate::export::text_field(item, "id").filter(|id| !id.is_empty())
     }
 
     // Synthetic ids must not take an id an item brings, even a later one.

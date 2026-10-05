@@ -316,14 +316,20 @@ fn abnt_post_processing_still_uppercases_names() {
 }
 
 #[test]
-fn a_value_opening_with_punctuation_is_not_a_panic() {
-    // hayagriva trims a prefix's trailing space when the value opens with
-    // punctuation ("punctuation eats spaces"), then slices the text at the
-    // prefix's untrimmed byte length — inside "é" after "pp.&#160;" + ".é".
-    // Fixed in the vendored hayagriva (see vendor/README.md); the input
-    // can't be trimmed into safety without changing it.
-    for numbers in [".é", ",é", ")é", "]é", ".\u{1e006}:"] {
-        let result = iso690_fr(&french_article(Some(numbers)));
-        assert!(result.is_ok(), "{numbers:?}: {result:?}");
+fn a_value_opening_with_punctuation_keeps_its_value() {
+    // The style prints `volume` and `page` after "Vol.&#160;"/"pp.&#160;".
+    // A value opening with punctuation makes hayagriva trim that NBSP
+    // ("punctuation eats spaces"), but it measured the prefix before the
+    // trim: the offset fell inside "é" — a panic — or past a short value,
+    // which then read as empty and was dropped ("2020., ."). Fixed in the
+    // vendored hayagriva (vendor/README.md).
+    for value in [".e", ".é", ",é", ")é", "]é", ".\u{1e006}:"] {
+        let result = iso690_fr(&french_article(Some(value)));
+        let reference = result.unwrap().reference;
+        assert!(
+            reference.contains(&format!("Vol.{value}"))
+                && reference.contains(&format!("pp.{value}")),
+            "{value:?}: {reference}"
+        );
     }
 }

@@ -258,3 +258,32 @@ fn max_entries_holds_when_a_line_has_several_entries() {
     assert_eq!(result.entries.len(), 1);
     assert!(result.truncated);
 }
+
+#[test]
+fn an_undefined_macro_inside_a_string_definition_is_kept_as_text() {
+    // An undefined macro used in a field is kept as its name; used inside an
+    // @string it failed a whole-file parse per definition. Past eight, the
+    // import read entries one by one: every entry using a broken macro was
+    // dropped, and every entry lost its crossref inheritance.
+    let mut input = String::new();
+    for i in 0..10 {
+        input.push_str(&format!("@string{{j{i} = undefined # {{ Journal {i}}}}}\n"));
+    }
+    input.push_str("@book{parent, title = {Parent Book}, publisher = {P}, year = {2020}}\n");
+    for i in 0..10 {
+        input.push_str(&format!(
+            "@incollection{{c{i}, author = {{A, B}}, title = {{Chapter {i}}}, note = j{i}, crossref = {{parent}}}}\n"
+        ));
+    }
+    let result = parse_bibtex(&input, &ParseOptions::default());
+    assert_eq!(result.entries.len(), 11, "{:?}", result.errors);
+    for chapter in &result.entries[1..] {
+        assert_eq!(chapter["publisher"], "P", "inheritance lost: {chapter}");
+        assert!(
+            chapter["note"]
+                .as_str()
+                .is_some_and(|n| n.starts_with("undefined Journal")),
+            "{chapter}"
+        );
+    }
+}

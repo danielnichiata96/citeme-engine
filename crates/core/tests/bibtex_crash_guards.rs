@@ -288,3 +288,39 @@ fn ordinary_entries_report_nothing() {
     assert_eq!(result.entries.len(), 3);
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
+
+#[test]
+fn many_copies_of_one_key_import_in_linear_time() {
+    // Each duplicate was renamed by probing "{key}-citeme-2", "-3", … from 2
+    // again every time: 20,000 copies of one entry (400 KB) took 18 s in a
+    // release build — a paste that hangs the import.
+    let input = "@misc{a, title={T}}\n".repeat(16_000);
+    let started = std::time::Instant::now();
+    let result = parse(&input);
+    let elapsed = started.elapsed();
+    assert_eq!(result.entries.len(), 16_000, "{:?}", result.errors);
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "took {elapsed:?}"
+    );
+}
+
+#[test]
+fn an_entry_with_many_fields_imports_in_linear_time() {
+    // Every field copied the whole entry's source for an error preview it
+    // rarely needed: one entry with 160,000 short fields (2.3 MB) took 23 s
+    // in a release build.
+    let mut input = String::from("@misc{k, title = {T}");
+    for i in 0..160_000 {
+        input.push_str(&format!(", f{i} = {{x}}"));
+    }
+    input.push('}');
+    let started = std::time::Instant::now();
+    let result = parse(&input);
+    let elapsed = started.elapsed();
+    assert_eq!(result.entries.len(), 1, "{:?}", result.errors);
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "took {elapsed:?}"
+    );
+}

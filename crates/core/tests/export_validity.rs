@@ -757,17 +757,33 @@ fn csl_number_reaches_every_exporter() {
             (2, 0),
             "{name}:\n{bib}"
         );
-        assert!(
-            back.entries[0].to_string().contains("TR-42"),
-            "{name}: the report number must survive a round trip:\n{bib}"
-        );
+        // Back as the same variables: a report's number came back as its
+        // issue, and an article's number (eid) not at all.
+        assert_eq!(back.entries[0]["number"], "TR-42", "{name}:\n{bib}");
+        assert_eq!(back.entries[1]["number"], "e0123456", "{name}:\n{bib}");
+        assert_eq!(back.entries[1]["issue"], "3", "{name}:\n{bib}");
     }
 
     let ris = csl_json_to_ris(&report);
     assert!(ris.contains("M1  - TR-42"), "{ris}");
+    let back = parse_ris(&ris, &ParseOptions::default());
+    assert_eq!(back.entries[0]["number"], "TR-42", "{ris}");
     let ris = csl_json_to_ris(&article);
     assert!(ris.contains("C7  - e0123456"), "{ris}");
     assert!(ris.contains("IS  - 3"), "{ris}");
+    let back = parse_ris(&ris, &ParseOptions::default());
+    assert_eq!(back.entries[0]["number"], "e0123456", "{ris}");
+
+    // C7 is an article number: types RIS has no tag for fell back to JOUR,
+    // and their numbers ("ISO 690:2021") went out as article numbers.
+    for kind in ["standard", "legislation", "manuscript", "article"] {
+        let item = json!({"type": kind, "title": "T", "number": "ISO 690:2021"});
+        let ris = csl_json_to_ris(&item);
+        assert!(
+            ris.contains("M1  - ISO 690:2021") && !ris.contains("C7"),
+            "{kind}:\n{ris}"
+        );
+    }
 
     let yaml = csl_json_array_to_hayagriva(&items);
     let lib = hayagriva::io::from_yaml_str(&yaml).expect("hayagriva YAML must load");

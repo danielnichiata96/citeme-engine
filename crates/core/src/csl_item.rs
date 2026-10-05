@@ -299,8 +299,8 @@ fn date_parts(key: &str, value: &Value) -> Result<Option<DateParts>, ItemProblem
 
 /// `raw`: a year-first ISO-like date ("2019", "2019-05-03",
 /// "2019-05-03T10:00:00Z"), optionally followed by `~` (circa) or by
-/// `/` and an end date — the forms citationberg reads. Returns the date and
-/// whether it is marked circa.
+/// `/` and an end date, read the way the exporters read `raw`. Returns the
+/// date and whether it is marked circa.
 fn raw_date(key: &str, value: &Value) -> Result<(Option<DateParts>, bool), ItemProblem> {
     let Some(raw) = value.as_str() else {
         return Err(ItemProblem::Invalid(format!("{key}: raw must be text")));
@@ -333,25 +333,20 @@ fn raw_date(key: &str, value: &Value) -> Result<(Option<DateParts>, bool), ItemP
     }
 }
 
+/// One side of a `raw` date: a four-digit year first, as the exporters
+/// require — read by position, "03-05-2019" made 3 the year — and a
+/// trailing `~` for circa.
 fn raw_side(side: &str) -> Option<(DateParts, bool)> {
-    let mut numbers = Vec::with_capacity(3);
-    let mut rest = side.trim();
-    while numbers.len() < 3 {
-        let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-        if digits == 0 {
-            break;
-        }
-        numbers.push(rest[..digits].parse().ok()?);
-        rest = &rest[digits..];
-        match rest.strip_prefix('-') {
-            Some(after) if after.starts_with(|c: char| c.is_ascii_digit()) => rest = after,
-            _ => break,
-        }
-    }
-    if numbers.is_empty() {
-        return None;
-    }
-    Some((numbers, rest.starts_with('~')))
+    let side = side.trim();
+    let (side, circa) = match side.strip_suffix('~') {
+        Some(date) => (date, true),
+        None => (side, false),
+    };
+    let numbers: DateParts = crate::export::raw_iso_parts(side)?
+        .into_iter()
+        .map_while(|part| part)
+        .collect();
+    (!numbers.is_empty()).then_some((numbers, circa))
 }
 
 /// A date hayagriva can render: a year citationberg can hold, then a month
@@ -468,6 +463,26 @@ mod tests {
         );
         assert_eq!(parts(json!({"date-parts": [[null]]})), None);
         assert_eq!(parts(Value::Null), None);
+    }
+
+    #[test]
+    fn a_raw_date_needs_a_four_digit_year_first() {
+        // Read by position, a day- or month-first date made its first number
+        // the year — "03-05-2019" printed year 3 — the bug the exporters'
+        // raw reader already refuses.
+        for raw in ["03-05-2019", "5-3-2019", "19-05-03", "800"] {
+            assert!(
+                matches!(
+                    issued(json!({ "raw": raw })),
+                    Err(ItemProblem::Unsupported(_))
+                ),
+                "{raw}"
+            );
+        }
+        assert_eq!(
+            issued(json!({"raw": "0800-03"})).unwrap(),
+            Some(json!({"date-parts": [[800, 3]]}))
+        );
     }
 
     #[test]
