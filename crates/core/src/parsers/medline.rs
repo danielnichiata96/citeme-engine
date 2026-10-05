@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 ///
 /// Key tags:
 /// - PMID: PubMed ID
+/// - PMC: PubMed Central ID ("PMC6500000")
 /// - TI: Title
 /// - FAU: Full author name ("Last, First Middle")
 /// - AU: Abbreviated author ("Last FM")
@@ -62,7 +63,14 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
     let mut tag_indent: Option<usize> = None;
 
     for line in input.lines() {
-        // Blank line = record separator
+        // A byte-order mark (Windows tools write one) is not part of the
+        // first tag; left in place, "PMID" stopped being a tag.
+        let line = line.trim_start_matches('\u{FEFF}');
+
+        // Blank line = record separator. The next record sets its own tag
+        // indent: carrying this one over made every line of a record pasted
+        // deeper than the one before read as a wrapped line, and the record
+        // vanished.
         if line.trim().is_empty() {
             if let Some(record) = current.take() {
                 if !push_record(&mut entries, record, &mut scanned, options.max_entries) {
@@ -70,6 +78,7 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
                 }
             }
             last_tag.clear();
+            tag_indent = None;
             continue;
         }
 
@@ -79,9 +88,12 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
         // "HIV"/"IL", which cuts the field short and files the rest under a
         // tag nobody reads. It is relative to the tag indent, not a fixed six
         // spaces, so a record pasted with an indent still parses and a
-        // normalizer that shrank the indent still wraps.
+        // normalizer that shrank the indent still wraps. Only an open record
+        // has a field to continue, and a PMID always opens a record.
         let indent = line.len() - line.trim_start().len();
-        if tag_indent.is_some_and(|tags| indent > tags) {
+        let parsed = parse_tag_line(line);
+        let opens_record = parsed.as_ref().is_some_and(|(tag, _)| tag == "PMID");
+        if current.is_some() && !opens_record && tag_indent.is_some_and(|tags| indent > tags) {
             if let Some(ref mut record) = current {
                 record.continue_field(&last_tag, line.trim());
             }
@@ -90,7 +102,12 @@ pub fn parse_medline(input: &str, options: &ParseOptions) -> ParseResult {
 
         // MEDLINE tags are commonly fixed-width (`TI  - value`), but text
         // normalizers often collapse the double spaces to `TI - value`.
-        let Some((tag, value)) = parse_tag_line(line) else {
+        let Some((tag, value)) = parsed else {
+            // Not a tag: a wrapped line whose indent a paste stripped. It
+            // still belongs to the field above it.
+            if let Some(ref mut record) = current {
+                record.continue_field(&last_tag, line.trim());
+            }
             continue;
         };
         tag_indent = Some(indent);
@@ -161,8 +178,8 @@ fn truncated_result(entries: Vec<Value>, scanned: usize) -> ParseResult {
 
 /// Tags `MedlineRecord::add_field` reads.
 const READ_TAGS: &[&str] = &[
-    "PMID", "TI", "FAU", "AU", "CN", "DP", "TA", "JT", "VI", "IP", "PG", "LID", "AID", "AB", "LA",
-    "PT", "IS", "PL", "OT",
+    "PMID", "PMC", "TI", "FAU", "AU", "CN", "DP", "TA", "JT", "VI", "IP", "PG", "LID", "AID", "AB",
+    "LA", "PT", "IS", "PL", "OT",
 ];
 
 fn parse_tag_line(line: &str) -> Option<(String, String)> {
@@ -282,6 +299,7 @@ fn append_to_last(list: &mut [String], text: &str) {
 /// Internal record accumulator.
 struct MedlineRecord {
     pmid: Option<String>,
+    pmcid: Option<String>,
     title: Option<String>,
     authors: Vec<MedlineAuthor>,
     date: Option<String>,         // DP: "2024 Mar" or "2024"
@@ -303,6 +321,7 @@ impl MedlineRecord {
     fn new() -> Self {
         Self {
             pmid: None,
+            pmcid: None,
             title: None,
             authors: Vec::new(),
             date: None,
@@ -324,6 +343,7 @@ impl MedlineRecord {
     fn add_field(&mut self, tag: &str, value: &str) {
         match tag {
             "PMID" => self.pmid = Some(value.to_string()),
+            "PMC" => self.pmcid = Some(value.to_string()),
             // A repeated TI/AB continues the field rather than replacing it.
             "TI" => append_to(&mut self.title, value),
             "FAU" => self.authors.push(MedlineAuthor::Person {
@@ -418,6 +438,9 @@ impl MedlineRecord {
         if let Some(ref pmid) = self.pmid {
             obj.insert("id".into(), json!(format!("PMID:{pmid}")));
             obj.insert("PMID".into(), json!(pmid));
+        }
+        if let Some(ref pmcid) = self.pmcid {
+            obj.insert("PMCID".into(), json!(pmcid));
         }
 
         // Title
@@ -769,6 +792,58 @@ TA  - Proc Natl Acad Sci U S A\n";
             result.entries[0]["author"][0],
             serde_json::json!({"family": "Smith", "given": "J. A.", "suffix": "Jr"})
         );
+    }
+
+    #[test]
+    fn test_parse_medline_record_indented_deeper_than_the_one_before() {
+        // The tag indent carried over the blank line, so every line of a
+        // more-indented second record read as a continuation of nothing and
+        // the record vanished (0.3.8 read both).
+        let input =
+            "PMID- 1\nTI  - First.\nFAU - A, B\n\n  PMID- 2\n  TI  - Second.\n  FAU - C, D\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        let titles: Vec<_> = result.entries.iter().map(|e| e["title"].clone()).collect();
+        assert_eq!(
+            titles,
+            vec![serde_json::json!("First."), serde_json::json!("Second.")]
+        );
+        assert_eq!(result.entries[1]["PMID"], "2");
+        assert_eq!(result.entries[1]["author"][0]["family"], "C");
+    }
+
+    #[test]
+    fn test_parse_medline_deindented_wrapped_line_continues_its_field() {
+        // A paste that stripped the six-space indent leaves the wrapped line
+        // at the tag column. It can't be a tag, so it continues the field —
+        // dropping it cut the title short.
+        let input = "PMID- 1\nTI  - Effects of therapy on outcomes in patients with\nsevere disease and comorbidities.\nFAU - Smith, John\nAB  - Background text\nHIV-1 infection rates rose.\nDP  - 2020\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        let first = &result.entries[0];
+        assert_eq!(
+            first["title"],
+            "Effects of therapy on outcomes in patients with severe disease and comorbidities."
+        );
+        assert_eq!(
+            first["abstract"],
+            "Background text HIV-1 infection rates rose."
+        );
+        assert_eq!(first["author"].as_array().unwrap().len(), 1);
+        assert_eq!(first["issued"]["date-parts"][0], serde_json::json!([2020]));
+    }
+
+    #[test]
+    fn test_parse_medline_pmc_is_pmcid() {
+        let input = "PMID- 31000000\nTI  - T.\nFAU - A, B\nDP  - 2019\nPMC - PMC6500000\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        assert_eq!(result.entries[0]["PMCID"], "PMC6500000");
+    }
+
+    #[test]
+    fn test_parse_medline_utf8_bom_keeps_the_pmid() {
+        let input = "\u{FEFF}PMID- 7\nTI  - T.\nFAU - A, B\n";
+        let result = parse_medline(input, &ParseOptions::default());
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(result.entries[0]["PMID"], "7");
     }
 
     #[test]

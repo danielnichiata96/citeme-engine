@@ -28,37 +28,54 @@ impl InputFormat {
     }
 }
 
-/// `@` + ASCII-alpha entry type + optional whitespace + `{` or `(`.
-/// Bare `@` in prose ("me @ home", "@user mentions") never matches: the
-/// type word must be non-empty and immediately followed by the opener.
-fn looks_like_bibtex_entry(s: &str) -> bool {
-    for (i, c) in s.char_indices() {
-        if c != '@' {
-            continue;
-        }
-        let rest = &s[i + 1..];
-        // ASCII-alpha chars are 1 byte each, so count == byte offset.
-        let word_len = rest.chars().take_while(|c| c.is_ascii_alphabetic()).count();
-        if word_len == 0 {
-            continue;
-        }
-        let after = rest[word_len..].trim_start();
-        if after.starts_with('{') || after.starts_with('(') {
-            return true;
-        }
+/// A byte-order mark: not content, but Windows exporters prefix one.
+const BOM: char = '\u{FEFF}';
+
+/// `s` opens with `@` + ASCII-alpha entry type + optional whitespace + `{`
+/// or `(`. Bare `@` in prose ("me @ home", "@user mentions") never matches:
+/// the type word must be non-empty and immediately followed by the opener.
+fn starts_bibtex_entry(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix('@') else {
+        return false;
+    };
+    // ASCII-alpha chars are 1 byte each, so count == byte offset.
+    let word_len = rest.chars().take_while(|c| c.is_ascii_alphabetic()).count();
+    if word_len == 0 {
+        return false;
     }
-    false
+    let after = rest[word_len..].trim_start();
+    after.starts_with('{') || after.starts_with('(')
+}
+
+/// An entry opener anywhere in `s`.
+fn looks_like_bibtex_entry(s: &str) -> bool {
+    s.char_indices()
+        .any(|(i, c)| c == '@' && starts_bibtex_entry(&s[i..]))
+}
+
+/// A RIS/MEDLINE tag line: an uppercase tag ("TY", "PMID", "A2"), optional
+/// spaces, then a dash ("TY  - JOUR", "PMID- 1", "TI - x").
+fn is_tag_line(line: &str) -> bool {
+    let tag_len = line
+        .bytes()
+        .take_while(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        .count();
+    line.starts_with(|c: char| c.is_ascii_uppercase())
+        && (2..=4).contains(&tag_len)
+        && line[tag_len..].trim_start_matches(' ').starts_with('-')
 }
 
 /// Auto-detect input format from content.
 ///
 /// Heuristics (applied in order):
 /// 1. Starts with `{` or `[` → CSL-JSON (valid JSON object/array)
-/// 2. Any `@word{` / `@word(` entry opener → BibTeX
-/// 3. Contains `TY  -` at line start → RIS
+/// 2. The first line that opens a record decides: an `@word{` / `@word(`
+///    entry opener → BibTeX; a tag line → RIS when any line starts with
+///    `TY  -`, MEDLINE when one starts with `PMID-`, `FAU -` or `AU  -`
+/// 3. An `@word{` / `@word(` entry opener anywhere → BibTeX
 /// 4. Otherwise → Unknown
 pub fn detect_format(input: &str) -> InputFormat {
-    let trimmed = input.trim();
+    let trimmed = input.trim_start_matches(BOM).trim();
     if trimmed.is_empty() {
         return InputFormat::Unknown;
     }
@@ -71,29 +88,40 @@ pub fn detect_format(input: &str) -> InputFormat {
         }
     }
 
-    // BibTeX: any `@word{` / `@word(` entry opener. A closed list of entry
-    // types silently dropped valid BibTeX (`@dataset`, `@software`, custom
-    // types biblatex accepts) into Unknown.
+    // Each format opens its records at the start of a line, so the first
+    // line that does is the file's format. An opener inside a field comes
+    // later: "@WHO (" in a RIS abstract matched the BibTeX opener and the
+    // whole file was parsed as BibTeX, importing nothing.
+    let lines = || {
+        trimmed
+            .lines()
+            .map(|line| line.trim_matches(|c: char| c.is_whitespace() || c == BOM))
+    };
+    for line in lines() {
+        if starts_bibtex_entry(line) {
+            return InputFormat::Bibtex;
+        }
+        if is_tag_line(line) {
+            if lines().any(|line| line.starts_with("TY  -")) {
+                return InputFormat::Ris;
+            }
+            // MEDLINE/NBIB: "PMID-" and "FAU -" are MEDLINE's own; "AU  -"
+            // is shared with RIS, but without a TY line it isn't RIS.
+            if lines().any(|line| {
+                line.starts_with("PMID-") || line.starts_with("FAU -") || line.starts_with("AU  -")
+            }) {
+                return InputFormat::Medline;
+            }
+            break;
+        }
+    }
+
+    // BibTeX: any `@word{` / `@word(` entry opener, even after some prose
+    // ("Here it is: @article{…}"). A closed list of entry types silently
+    // dropped valid BibTeX (`@dataset`, `@software`, custom types biblatex
+    // accepts) into Unknown.
     if looks_like_bibtex_entry(trimmed) {
         return InputFormat::Bibtex;
-    }
-
-    // RIS: TY  - at line start
-    for line in trimmed.lines() {
-        let line = line.trim();
-        if line.starts_with("TY  -") {
-            return InputFormat::Ris;
-        }
-    }
-
-    // MEDLINE/NBIB: PMID- at line start, or FAU - / TI  - pattern
-    for line in trimmed.lines() {
-        let line = line.trim();
-        if line.starts_with("PMID-") || line.starts_with("FAU -") || line.starts_with("AU  -") {
-            // Distinguish from RIS: MEDLINE uses "PMID-" and "FAU -", RIS uses "TY  -"
-            // If we got here, TY was not found, so it's MEDLINE not RIS
-            return InputFormat::Medline;
-        }
     }
 
     InputFormat::Unknown
@@ -165,6 +193,65 @@ mod tests {
     #[test]
     fn test_detect_unknown() {
         assert_eq!(detect_format("just some random text"), InputFormat::Unknown);
+    }
+
+    #[test]
+    fn test_detect_at_mention_in_ris_or_medline_text_is_not_bibtex() {
+        // "@WHO (" inside an abstract matched the `@word(` entry opener, so
+        // the whole file was parsed as BibTeX and imported nothing.
+        assert_eq!(
+            detect_format(
+                "TY  - JOUR\nTI  - T\nAB  - Guidance from @WHO (World Health Organization) was followed.\nER  - \n"
+            ),
+            InputFormat::Ris
+        );
+        assert_eq!(
+            detect_format(
+                "PMID- 1\nTI  - T.\nAB  - Data shared by @CDCgov (Centers for Disease Control).\nFAU - Smith, John\n"
+            ),
+            InputFormat::Medline
+        );
+        // PubMed wraps at ~80 columns: the mention can open a wrapped line.
+        assert_eq!(
+            detect_format(
+                "PMID- 1\nAB  - Data shared by\n      @CDCgov (Centers for Disease Control).\n"
+            ),
+            InputFormat::Medline
+        );
+    }
+
+    #[test]
+    fn test_detect_bibtex_entry_opener_anywhere() {
+        // A pasted entry after some prose is still BibTeX, and a BibTeX file
+        // whose fields mention RIS/MEDLINE tags stays BibTeX.
+        assert_eq!(
+            detect_format("Here it is: @article{k, title={T}}"),
+            InputFormat::Bibtex
+        );
+        assert_eq!(
+            detect_format("@article{k,\n  note = {exported as\nPMID- 123},\n  title = {T}\n}"),
+            InputFormat::Bibtex
+        );
+    }
+
+    #[test]
+    fn test_detect_sees_past_a_utf8_bom() {
+        assert_eq!(
+            detect_format("\u{FEFF}TY  - JOUR\nTI  - First\nER  - \n"),
+            InputFormat::Ris
+        );
+        assert_eq!(
+            detect_format("\u{FEFF}PMID- 1\nTI  - T.\n"),
+            InputFormat::Medline
+        );
+        assert_eq!(
+            detect_format("\u{FEFF}@article{k, title={T}}"),
+            InputFormat::Bibtex
+        );
+        assert_eq!(
+            detect_format("\u{FEFF}[{\"type\": \"book\"}]"),
+            InputFormat::CslJson
+        );
     }
 
     #[test]

@@ -71,6 +71,34 @@ fn ris_tags_without_a_trailing_space_still_parse() {
 }
 
 #[test]
+fn a_utf8_bom_does_not_hide_a_ris_file() {
+    // Windows exporters prefix a byte-order mark; detection read the file
+    // as "unknown" and the parser lost the first record.
+    let res = parse_auto(
+        "\u{FEFF}TY  - JOUR\nTI  - First\nER  - \nTY  - JOUR\nTI  - Second\nER  - \n",
+        &ParseOptions::default(),
+    );
+    assert_eq!(res.format, "ris");
+    assert_eq!(res.entries.len(), 2, "{:?}", res.errors);
+    assert_eq!(res.entries[0]["title"].as_str(), Some("First"));
+}
+
+#[test]
+fn an_at_mention_in_an_abstract_does_not_make_a_file_bibtex() {
+    // "@WHO (" matched the BibTeX entry opener, so a RIS or MEDLINE file
+    // citing a handle imported zero entries with one BibTeX parse error.
+    let ris = "TY  - JOUR\nTI  - T\nAB  - Guidance from @WHO (World Health Organization) was followed.\nER  - \n";
+    let res = parse_auto(ris, &ParseOptions::default());
+    assert_eq!(res.format, "ris");
+    assert_eq!(res.entries.len(), 1, "{:?}", res.errors);
+
+    let nbib = "PMID- 1\nTI  - T.\nAB  - Data shared by @CDCgov (Centers for Disease Control).\nFAU - Smith, John\n";
+    let res = parse_auto(nbib, &ParseOptions::default());
+    assert_eq!(res.format, "medline");
+    assert_eq!(res.entries.len(), 1, "{:?}", res.errors);
+}
+
+#[test]
 fn detected_but_unparseable_input_reports_an_error() {
     // Anything the detector claims but the parser can't turn into a single
     // entry must surface an error rather than an empty, errorless result.
