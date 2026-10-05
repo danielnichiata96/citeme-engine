@@ -15,15 +15,20 @@
 //! part is empty. When the parent group then appends a suffix like `;`, the
 //! result becomes `"2018 ;"` — a broken punctuation artifact.
 //!
-//! Hayagriva *does* correctly suppress `prefix` on a `<date-part>` whose prior
-//! siblings are all empty, so the workaround is to rewrite the equivalent
-//! `delimiter` usage as per-part `prefix`:
+//! Hayagriva drops a `<date-part>`'s `prefix` along with an empty part, so
+//! the workaround is to rewrite the equivalent `delimiter` usage as per-part
+//! `prefix`:
 //!
 //!   `<date form="text">`
 //!     `<date-part name="year"/>`
 //!     `<date-part name="month" form="short" prefix=" "/>`
 //!     `<date-part name="day" prefix=" "/>`
 //!   `</date>`
+//!
+//! That is only equivalent when the first date-part always renders — the
+//! year. In a day- or month-first date the first part can be empty, and the
+//! next part's prefix then has nothing to separate ("( March 2018)"). Those
+//! dates are left alone: their delimiter can't trail (the year is last).
 //!
 //! This normalization is applied to every CSL style and locale XML before it
 //! reaches Hayagriva. It is idempotent: running it twice is a no-op.
@@ -33,8 +38,9 @@
 
 /// Normalize CSL XML by rewriting `<date delimiter="X">…<date-part/>…</date>`
 /// into `<date>…<date-part prefix="X"/>…</date>` for all but the first
-/// `<date-part>`. `<date-part>` elements that already carry a `prefix` are
-/// left untouched (the style author's explicit intent wins).
+/// `<date-part>`, in dates whose first `<date-part>` is the year.
+/// `<date-part>` elements that already carry a `prefix` are left untouched
+/// (the style author's explicit intent wins).
 ///
 /// This is a narrow string transform — it does NOT parse arbitrary XML, only
 /// the exact `<date>` / `<date-part>` patterns defined by CSL 1.0.2. Non-CSL
@@ -58,9 +64,9 @@ pub fn normalize_csl_xml(xml: &str) -> String {
         let self_closing = open_tag.ends_with("/>");
 
         let (rewritten_open, delim) = strip_delimiter_attr(open_tag);
-        out.push_str(&rewritten_open);
 
         if self_closing {
+            out.push_str(&rewritten_open);
             rest = &rest[tag_end..];
             continue;
         }
@@ -76,8 +82,14 @@ pub fn normalize_csl_xml(xml: &str) -> String {
         let body = &rest[body_start..body_start + close_rel];
 
         match delim {
-            Some(d) => out.push_str(&inject_date_part_prefixes(body, &d)),
-            None => out.push_str(body),
+            Some(d) if first_date_part_is_year(body) => {
+                out.push_str(&rewritten_open);
+                out.push_str(&inject_date_part_prefixes(body, &d));
+            }
+            _ => {
+                out.push_str(open_tag);
+                out.push_str(body);
+            }
         }
         out.push_str("</date>");
         rest = &rest[body_start + close_rel + "</date>".len()..];
@@ -187,6 +199,55 @@ fn is_attr_boundary(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\n' | b'\r')
 }
 
+/// Whether the first `<date-part>` in a date's body is `name="year"`.
+fn first_date_part_is_year(body: &str) -> bool {
+    let mut rest = body;
+    while let Some(rel) = rest.find("<date-part") {
+        rest = &rest[rel..];
+        if !is_date_part_tag(rest) {
+            rest = &rest["<date-part".len()..];
+            continue;
+        }
+        return match find_tag_end(rest) {
+            Some(end) => attr_value(&rest[..end], "name") == Some("year"),
+            None => false,
+        };
+    }
+    false
+}
+
+/// Whether `s`, starting at `<date-part`, is that element — not a longer
+/// name like `<date-partx>`.
+fn is_date_part_tag(s: &str) -> bool {
+    matches!(
+        s.as_bytes().get("<date-part".len()).copied(),
+        Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') | Some(b'>') | Some(b'/')
+    )
+}
+
+/// The value of attribute `name` in an opening tag, if present and quoted.
+fn attr_value<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let bytes = tag.as_bytes();
+    let mut search_from = 0usize;
+    while let Some(rel) = tag[search_from..].find(name) {
+        let start = search_from + rel;
+        search_from = start + name.len();
+        if start == 0 || !is_attr_boundary(bytes[start - 1]) {
+            continue;
+        }
+        let Some(after_eq) = tag[search_from..].trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let after_eq = after_eq.trim_start();
+        let Some(quote) = after_eq.chars().next().filter(|q| *q == '"' || *q == '\'') else {
+            continue;
+        };
+        let value = &after_eq[1..];
+        return value.find(quote).map(|end| &value[..end]);
+    }
+    None
+}
+
 /// For each `<date-part …/>` (or `<date-part …></date-part>`) inside `body`,
 /// inject `prefix="{delim}"` on every occurrence EXCEPT the first, and ONLY
 /// when the element does not already declare a `prefix` attribute.
@@ -199,14 +260,7 @@ fn inject_date_part_prefixes(body: &str, delim: &str) -> String {
         out.push_str(&rest[..rel]);
         rest = &rest[rel..];
 
-        // Only treat as a <date-part> element if the next char is whitespace,
-        // `>`, or `/` — never a letter (guards against hypothetical `<date-partx>`).
-        let after_name = rest.as_bytes().get(10).copied();
-        let is_real_tag = matches!(
-            after_name,
-            Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') | Some(b'>') | Some(b'/')
-        );
-        if !is_real_tag {
+        if !is_date_part_tag(rest) {
             out.push_str(&rest[..10]);
             rest = &rest[10..];
             continue;
@@ -299,6 +353,19 @@ mod tests {
     }
 
     #[test]
+    fn leaves_dates_that_do_not_start_with_the_year_alone() {
+        // Per-part prefixes only stand in for the delimiter while the first
+        // part always renders. A day-first date with no day kept the month's
+        // prefix: "( March 2018)" in mcgill, "[cited  2018]" in plos.
+        for xml in [
+            r#"<date delimiter=" "><date-part name="day"/><date-part name="month"/><date-part name="year"/></date>"#,
+            r#"<date delimiter=", "><date-part name="month"/><date-part name="day"/><date-part name="year"/></date>"#,
+        ] {
+            assert_eq!(normalize_csl_xml(xml), xml);
+        }
+    }
+
+    #[test]
     fn passthrough_when_no_delimiter() {
         let xml = r#"<date form="text"><date-part name="year"/></date>"#;
         assert_eq!(normalize_csl_xml(xml), xml);
@@ -361,7 +428,7 @@ mod tests {
         let xml = r#"<style>
 <date delimiter=" "><date-part name="year"/><date-part name="month"/></date>
 <other>text</other>
-<date delimiter="/"><date-part name="day"/><date-part name="year"/></date>
+<date delimiter="/"><date-part name="year"/><date-part name="day"/></date>
 </style>"#;
         let out = normalize_csl_xml(xml);
         assert!(
@@ -369,7 +436,7 @@ mod tests {
             "first date rewritten: {out}"
         );
         assert!(
-            out.contains(r#"<date-part name="year" prefix="/"/>"#),
+            out.contains(r#"<date-part name="day" prefix="/"/>"#),
             "second date rewritten: {out}"
         );
     }
