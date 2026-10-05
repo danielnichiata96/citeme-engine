@@ -12,6 +12,12 @@ wrong data — no error, nothing for a consumer fallback to catch — and each
 is pinned by a test that failed before the fix.
 
 ### Fixed
+- **BibTeX import shifted every month and day back by one.** hayagriva's
+  `Date` is zero-based and was copied into one-based CSL date-parts:
+  `month = may` imported as April, and January as month 0 — APA rendered
+  "(2019, 256)". Present since the parser was written. biblatex `type` keys
+  (`phdthesis`, `mathesis`, …) now import as readable genres instead of
+  printing "[Phdthesis]".
 - **MEDLINE: wrapped lines.** PubMed wraps at ~80 columns with a six-space
   indent. A wrapped line opening with "HIV-1", "IL-6" or "SARS-CoV-2" read
   as a tag and cut the title short; a wrapped journal title replaced the
@@ -20,15 +26,18 @@ is pinned by a test that failed before the fix.
   with no authors; `AU` is now read when `FAU` is absent, and `CN`
   (corporate author) is kept in order. A second `PMID` starts a new record
   instead of merging two records whose blank separator was lost. `DP` keeps
-  the day and the first month of a range.
-- **RIS: `Y2` is the access date** (event date for `CONF`), never the
-  publication date — it overwrote `DA`, so a 2019 article imported as 2024.
+  the day and the first month of a range. Continuation is relative to the
+  tag indent, so indented pastes parse; `AU` keeps a "Jr" suffix.
+- **RIS: `Y2` is the access date** (as Zotero and EndNote write it, for
+  every type), never the publication date — it overwrote `DA`, so a 2019
+  article imported as 2024.
 - **RIS:** a lone `SP` (article numbers, whole ranges) keeps its page; full
   journal titles (`T2`/`JF`/`BT`) beat abbreviations (`JO`/`JA`/`J2`, now
   `container-title-short`) regardless of order; a missing `ER` no longer
-  discards the record; ISO dates and full `PY` dates are read; `ED`/`A2`
-  become editors and "Last, First, Jr." keeps its suffix; the truncation
-  path no longer leaks internal `_sp`/`_ep` keys.
+  discards the record; ISO dates and full `PY` dates are read; `ED` (and
+  `A2` on chapters/proceedings) become editors, "Last, First, Jr." keeps
+  its suffix, and `BT` is the title of a `BOOK`; the truncation path no
+  longer leaks internal `_sp`/`_ep` keys.
 - **BibTeX import: duplicate keys** each merge with their own biblatex
   entry. The second entry of a duplicated key took the first one's type,
   journal and keywords.
@@ -39,10 +48,12 @@ is pinned by a test that failed before the fix.
 - **All exporters read CSL "string or number" values**: numeric
   `volume`/`issue`/`page`/`edition`/`PMID`, numeric-string date-parts
   (`[["2019", "5"]]`, as Zotero and citation-js emit) and `raw` ISO dates
-  were dropped. Out-of-range months/days are no longer written.
+  were dropped. Out-of-range months/days are no longer written; ambiguous
+  `raw` dates like "05/03/2019" are not guessed.
 - **Theses and reports export their institution** as BibTeX
   `school`/`institution` and BibLaTeX `institution`, plus the BibLaTeX
-  thesis `type`; standard styles ignore `publisher` there.
+  thesis `type` (the genre as written); standard styles ignore `publisher`
+  there.
 - **`formatBatch` keeps numeric ids.** They were replaced per position, so
   one item cited twice became "2024a"/"2024b".
 
